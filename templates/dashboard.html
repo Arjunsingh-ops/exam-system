@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ExamPro Plus{% endblock %}
+{% block header_title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Welcome Admin</h1>
+</div>
+
+<div class="metrics-grid">
+    <div class="card metric-card">
+        <div class="metric-icon metric-blue">
+            <i class="fa-solid fa-users"></i>
+        </div>
+        <div class="metric-value">View</div>
+        <div class="metric-label">Manage Students</div>
+        <a href="/students" class="btn btn-sm" style="margin-top: 20px;">Go to Students <i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+
+    <div class="card metric-card">
+        <div class="metric-icon metric-purple">
+            <i class="fa-solid fa-building"></i>
+        </div>
+        <div class="metric-value">View</div>
+        <div class="metric-label">Manage Exam Rooms</div>
+        <a href="/rooms" class="btn btn-sm" style="margin-top: 20px;">Go to Rooms <i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+
+    <div class="card metric-card">
+        <div class="metric-icon metric-cyan">
+            <i class="fa-solid fa-calendar-check"></i>
+        </div>
+        <div class="metric-value">Action</div>
+        <div class="metric-label">Generate Seating</div>
+        <a href="/generate_seating" class="btn btn-sm" style="margin-top: 20px;">Generate Now <i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+</div>
+{% endblock %}

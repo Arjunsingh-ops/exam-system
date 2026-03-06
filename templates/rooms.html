@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Rooms - ExamPro Plus{% endblock %}
+{% block header_title %}Exam Rooms{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title"><i class="fa-solid fa-building"></i> Exam Rooms Management</h1>
+</div>
+
+<!-- Add Room Form -->
+<div class="card" style="margin-bottom: 30px;">
+    <h3 style="margin-bottom: 20px; color: var(--text-main); font-size: 1.25rem;"><i class="fa-solid fa-plus-square"></i> Add New Room</h3>
+    <form method="POST">
+        <div class="form-row">
+            <div class="form-group">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:var(--text-muted);">Room No</label>
+                <input name="room" placeholder="e.g. 101" required>
+            </div>
+            <div class="form-group">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:var(--text-muted);">Capacity</label>
+                <input name="capacity" placeholder="e.g. 60" required>
+            </div>
+            <div class="form-group">
+                <label style="display:block; margin-bottom:8px; font-weight:500; color:var(--text-muted);">Building</label>
+                <input name="building" placeholder="e.g. Main Block" required>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+                <button type="submit" class="btn"><i class="fa-solid fa-plus"></i> Add Room</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Rooms List -->
+<h3 style="margin-bottom: 15px; color: var(--text-main); font-size: 1.25rem;">Available Rooms</h3>
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Room No.</th>
+                <th>Capacity</th>
+                <th>Building Code</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rooms %}
+            <tr>
+                <td style="font-weight: 500;"><i class="fa-solid fa-door-closed" style="color: var(--text-muted); margin-right: 8px;"></i> {{ r.room_no }}</td>
+                <td>{{ r.capacity }} Seats</td>
+                <td>{{ r.building|default('Main', true) }}</td>
+                <td><span style="background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;"><i class="fa-solid fa-circle-check"></i> Active</span></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 30px;">No rooms registered yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

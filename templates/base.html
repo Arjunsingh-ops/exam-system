@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Exam System{% endblock %}</title>
+    <!-- Modern Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-layout fade-in">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-graduation-cap"></i>&nbsp; ExamPro Plus
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}"><i class="fa-solid fa-gauge"></i> Dashboard</a></li>
+                <li><a href="/students" class="{% if request.path == '/students' %}active{% endif %}"><i class="fa-solid fa-user-graduate"></i> Students</a></li>
+                <li><a href="/rooms" class="{% if request.path == '/rooms' %}active{% endif %}"><i class="fa-solid fa-building"></i> Rooms</a></li>
+                <li><a href="/generate_seating"><i class="fa-solid fa-chair"></i> Generate Seating</a></li>
+                <li><a href="/"><i class="fa-solid fa-right-from-bracket"></i> Logout</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-title">
+                    {% block header_title %}Overview{% endblock %}
+                </div>
+                <div class="header-user">
+                    <span>Welcome, Admin</span>
+                    <div class="user-avatar">A</div>
+                </div>
+            </header>
+
+            <!-- Page Specific Content -->
+            <div class="page-container slide-up">
+                {% block content %}
+                {% endblock %}
+            </div>
+        </main>
+    </div>
+</body>
+</html>
