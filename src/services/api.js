@@ -1,98 +1,88 @@
-import axios from "axios";
-import { saveAs } from "file-saver";
+import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  headers: { "Content-Type": "application/json" },
-});
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Attach JWT token to every request automatically
+const api = axios.create({ baseURL: BASE, headers: { 'Content-Type': 'application/json' } });
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Handle 401 globally (redirect to login)
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      window.location.href = "/login";
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
     }
     return Promise.reject(err);
   }
 );
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
-  login: (data) => api.post("/auth/login", data),
-  register: (data) => api.post("/auth/register", data),
-  me: () => api.get("/auth/me"),
+  login: (data) => api.post('/auth/login', data),
+  me:    ()     => api.get('/auth/me'),
 };
 
-// ── Students ─────────────────────────────────────────────────────────────────
 export const studentAPI = {
-  getMyProfile: () => api.get("/students/me"),
-  upsertMyProfile: (data) => api.post("/students/me", data),
-  getAll: (params) => api.get("/students", { params }),
-  getById: (id) => api.get(`/students/${id}`),
-  create: (data) => api.post("/students", data),
-  update: (id, data) => api.put(`/students/${id}`, data),
-  delete: (id) => api.delete(`/students/${id}`),
-  getDepartments: () => api.get("/students/departments"),
+  getAll:    (params) => api.get('/students', { params }),
+  getCourses:()       => api.get('/students/courses'),
+  create:    (data)   => api.post('/students', data),
+  update:    (id, d)  => api.put(`/students/${id}`, d),
+  delete:    (id)     => api.delete(`/students/${id}`),
+  clearAll:  ()       => api.delete('/students/clear'),
+  uploadCSV: (file)   => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/students/upload-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
 };
 
-// ── Rooms ─────────────────────────────────────────────────────────────────────
 export const roomAPI = {
-  getAll: () => api.get("/rooms"),
-  getById: (id) => api.get(`/rooms/${id}`),
-  create: (data) => api.post("/rooms", data),
-  update: (id, data) => api.put(`/rooms/${id}`, data),
-  delete: (id) => api.delete(`/rooms/${id}`),
+  getAll:  ()       => api.get('/rooms'),
+  create:  (data)   => api.post('/rooms', data),
+  update:  (id, d)  => api.put(`/rooms/${id}`, d),
+  delete:  (id)     => api.delete(`/rooms/${id}`),
 };
 
-// ── Exams ─────────────────────────────────────────────────────────────────────
 export const examAPI = {
-  getAll: () => api.get("/exams"),
-  getById: (id) => api.get(`/exams/${id}`),
-  create: (data) => api.post("/exams", data),
-  update: (id, data) => api.put(`/exams/${id}`, data),
-  delete: (id) => api.delete(`/exams/${id}`),
+  getAll:  ()       => api.get('/exams'),
+  create:  (data)   => api.post('/exams', data),
+  update:  (id, d)  => api.put(`/exams/${id}`, d),
+  delete:  (id)     => api.delete(`/exams/${id}`),
 };
 
-// ── Seating ───────────────────────────────────────────────────────────────────
+export const teacherAPI = {
+  getAll:  ()       => api.get('/teachers'),
+  create:  (data)   => api.post('/teachers', data),
+  update:  (id, d)  => api.put(`/teachers/${id}`, d),
+  delete:  (id)     => api.delete(`/teachers/${id}`),
+};
+
 export const seatingAPI = {
-  getAll: (params) => api.get("/seating", { params }),
-  generate: (data) => api.post("/seating/generate", data),
-  delete: (id) => api.delete(`/seating/${id}`),
-  getStudentSeating: (studentId) => api.get(`/seating/student/${studentId}`),
+  getAll:    (params) => api.get('/seating', { params }),
+  generate:  (data)   => api.post('/seating/generate', data),
+  clearExam: (eid)    => api.delete(`/seating/exam/${eid}`),
 };
 
-// ── PDF Download ──────────────────────────────────────────────────────────────
-export const downloadPDF = async ({ exam_id, date, shift }) => {
-  const params = new URLSearchParams();
-  if (exam_id) params.append("exam_id", exam_id);
-  if (date) params.append("date", date);
-  if (shift) params.append("shift", shift);
-
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/seating/pdf?${params}`,
-    { method: "GET" }
-  );
-
+export const downloadSeatingPDF = async (exam_id) => {
+  const response = await fetch(`${BASE}/seating/pdf?exam_id=${exam_id}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+  });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || "PDF download failed");
+    throw new Error(err.message || 'PDF download failed');
   }
-
   const blob = await response.blob();
-  const filename =
-    response.headers.get("content-disposition")?.match(/filename="(.+?)"/)?.[1] ||
-    `Seating_Plan_${date || "all"}_${shift || "all"}.pdf`;
-  saveAs(blob, filename);
+  const cd = response.headers.get('content-disposition') || '';
+  const filename = cd.match(/filename="(.+?)"/)?.[1] || `SeatingPlan_Exam${exam_id}.pdf`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 };
 
 export default api;

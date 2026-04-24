@@ -1,14 +1,11 @@
 const router = require('express').Router();
-const ctrl = require('../controllers/roomController');
-const { validate, schemas } = require('../middleware/validate');
-const { authenticate, authorizeAdmin } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
+const { getAllRooms, getRoom, createRoom, updateRoom, deleteRoom } = require('../controllers/roomController');
 
-router.use(authenticate);
-
-router.get('/',          ctrl.getAll);
-router.get('/:id',       ctrl.getById);
-router.post('/',         authorizeAdmin, validate(schemas.room), ctrl.create);
-router.put('/:id',       authorizeAdmin, validate(schemas.room), ctrl.update);
-router.delete('/:id',    authorizeAdmin,                         ctrl.remove);
+router.get('/',      authenticate, getAllRooms);
+router.get('/:id',   authenticate, getRoom);
+router.post('/',     authenticate, createRoom);
+router.put('/:id',   authenticate, updateRoom);
+router.delete('/:id', authenticate, deleteRoom);
 
 module.exports = router;

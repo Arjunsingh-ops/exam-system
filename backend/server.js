@@ -11,6 +11,7 @@ const authRoutes    = require('./routes/authRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const roomRoutes    = require('./routes/roomRoutes');
 const examRoutes    = require('./routes/examRoutes');
+const teacherRoutes = require('./routes/teacherRoutes');
 const seatingRoutes = require('./routes/seatingRoutes');
 
 const app = express();
@@ -22,9 +23,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+// ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) =>
-  res.json({ success: true, message: 'Exam Seating API is running 🚀', timestamp: new Date() })
+  res.json({ success: true, message: '🚀 Exam Seating API is running', timestamp: new Date() })
 );
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -32,27 +33,28 @@ app.use('/api/auth',     authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/rooms',    roomRoutes);
 app.use('/api/exams',    examRoutes);
+app.use('/api/teachers', teacherRoutes);
 app.use('/api/seating',  seatingRoutes);
 
-// ─── 404 handler ─────────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` });
-});
+// ─── 404 ──────────────────────────────────────────────────────────────────────
+app.use((req, res) =>
+  res.status(404).json({ success: false, message: `Cannot ${req.method} ${req.originalUrl}` })
+);
 
-// ─── Global error handler ────────────────────────────────────────────────────
+// ─── Error handler ────────────────────────────────────────────────────────────
 app.use(errorHandler);
 
-// ─── Startup ─────────────────────────────────────────────────────────────────
+// ─── Startup ──────────────────────────────────────────────────────────────────
 const start = async () => {
   try {
-    await initDatabase();   // Run schema.sql on startup
-    await testConnection(); // Verify pool connection
+    await initDatabase();
+    await testConnection();
     app.listen(PORT, () => {
       console.log(`\n🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📋 API docs available at http://localhost:${PORT}/api/health\n`);
+      console.log(`📋 Health: http://localhost:${PORT}/api/health\n`);
     });
   } catch (err) {
-    console.error('💥 Server failed to start:', err.message);
+    console.error('💥 Startup failed:', err.message);
     process.exit(1);
   }
 };

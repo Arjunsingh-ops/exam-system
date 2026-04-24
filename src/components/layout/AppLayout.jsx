@@ -1,22 +1,15 @@
-import { useState } from "react";
-import { Outlet } from "react-router-dom";
-import { Sidebar } from "./Sidebar";
-import { TopNav } from "./TopNav";
-import { Toaster } from "react-hot-toast";
+import { Outlet } from 'react-router-dom';
+import { Sidebar } from './Sidebar';
 
 export function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
   return (
-    <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans">
-      <Sidebar open={sidebarOpen} />
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <TopNav toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="p-6 lg:p-8 max-w-screen-xl mx-auto">
           <Outlet />
-        </main>
-      </div>
-      <Toaster position="bottom-right" />
+        </div>
+      </main>
     </div>
   );
 }

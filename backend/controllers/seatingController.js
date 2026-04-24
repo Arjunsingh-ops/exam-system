@@ -2,75 +2,73 @@ const puppeteer = require('puppeteer');
 const ExamModel = require('../models/examModel');
 const SeatingModel = require('../models/seatingModel');
 const RoomModel = require('../models/roomModel');
-const StudentModel = require('../models/studentModel');
+const TeacherModel = require('../models/teacherModel');
 const { pool } = require('../config/db');
 
-/**
- * GET /api/seating?exam_id=&date=&shift=
- */
+// ─── GET /api/seating?exam_id= ───────────────────────────────────────────────
 const getSeating = async (req, res, next) => {
   try {
-    const { exam_id, date, shift } = req.query;
-    const records = await SeatingModel.getAll({ exam_id, date, shift });
+    const { exam_id } = req.query;
+    const records = await SeatingModel.getAll({ exam_id });
     res.json({ success: true, count: records.length, seating: records });
   } catch (err) { next(err); }
 };
 
-/**
- * GET /api/seating/student/:student_id
- */
-const getStudentSeating = async (req, res, next) => {
-  try {
-    const records = await SeatingModel.getByStudent(req.params.student_id);
-    res.json({ success: true, seating: records });
-  } catch (err) { next(err); }
-};
-
-/**
- * DELETE /api/seating/:id
- */
+// ─── DELETE /api/seating/:id ─────────────────────────────────────────────────
 const deleteSeat = async (req, res, next) => {
   try {
     const affected = await SeatingModel.deleteById(req.params.id);
-    if (!affected) return res.status(404).json({ success: false, message: 'Seating record not found.' });
+    if (!affected) return res.status(404).json({ success: false, message: 'Record not found.' });
     res.json({ success: true, message: 'Seating record deleted.' });
   } catch (err) { next(err); }
 };
 
+// ─── DELETE /api/seating/exam/:exam_id ───────────────────────────────────────
+const clearSeatingForExam = async (req, res, next) => {
+  try {
+    const count = await SeatingModel.deleteByExam(req.params.exam_id);
+    res.json({ success: true, message: `Cleared ${count} seating records.` });
+  } catch (err) { next(err); }
+};
+
+// ─── POST /api/seating/generate ──────────────────────────────────────────────
 /**
- * POST /api/seating/generate
- * Body: { exam_id, room_ids: [1, 2, 3] }
+ * Body: { exam_id, room_ids: [1,2,3], teacher_ids: [1,2,3] }
  *
  * Algorithm:
- * 1. Fetch exam + students for that exam's dept/semester (or all if none specified)
- * 2. Group students by department
- * 3. Interleave departments so no two same-dept students sit adjacent
- * 4. For each room (ordered by capacity), fill seats respecting capacity
- * 5. Seat format: R{row}-C{col}
+ * 1. Fetch exam (course + semester used to filter students)
+ * 2. Fetch matching students ordered by specialization, roll_no
+ * 3. Group by specialization → interleave so no two same-spec students are adjacent
+ * 4. Room-by-room: fill grid (rows × cols) seat positions
+ * 5. Assign one teacher per room (round-robin from teacher_ids)
  */
 const generateSeating = async (req, res, next) => {
   try {
-    const { exam_id, room_ids } = req.body;
+    const { exam_id, room_ids, teacher_ids = [] } = req.body;
+
+    if (!exam_id) return res.status(400).json({ success: false, message: 'exam_id is required.' });
+    if (!room_ids?.length) return res.status(400).json({ success: false, message: 'At least one room is required.' });
 
     const exam = await ExamModel.getById(exam_id);
     if (!exam) return res.status(404).json({ success: false, message: 'Exam not found.' });
 
-    // Fetch all students (optionally filter by exam's department/semester/exam_type)
-    let query = 'SELECT id, name, roll_no, department, semester, exam_type FROM students';
-    const params = [];
-    const conditions = [];
-    if (exam.exam_type)  { conditions.push('exam_type = ?');  params.push(exam.exam_type); }
-    if (exam.department) { conditions.push('department = ?'); params.push(exam.department); }
-    if (exam.semester)   { conditions.push('semester = ?');   params.push(exam.semester); }
-    if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
-    query += ' ORDER BY department, roll_no';
+    // Fetch students matching exam's course + semester
+    const conditions = ['course = ?', 'semester = ?'];
+    const params = [exam.course, exam.semester];
+    const [students] = await pool.query(
+      `SELECT id, name, roll_no, course, specialization, semester 
+       FROM students WHERE ${conditions.join(' AND ')} ORDER BY specialization, roll_no`,
+      params
+    );
 
-    const [students] = await pool.query(query, params);
     if (!students.length) {
-      return res.status(400).json({ success: false, message: 'No students found matching exam criteria.' });
+      return res.status(400).json({
+        success: false,
+        message: `No students found for Course: "${exam.course}", Semester: ${exam.semester}. Please upload student data first.`,
+      });
     }
 
-    // Fetch rooms and validate
+    // Fetch and validate rooms
     const rooms = [];
     for (const rid of room_ids) {
       const room = await RoomModel.getById(rid);
@@ -82,49 +80,57 @@ const generateSeating = async (req, res, next) => {
     if (students.length > totalCapacity) {
       return res.status(400).json({
         success: false,
-        message: `Not enough room capacity. Students: ${students.length}, Total capacity: ${totalCapacity}`,
+        message: `Insufficient capacity. Students: ${students.length}, Total seats: ${totalCapacity}. Add more rooms.`,
       });
     }
 
-    // Group students by department
-    const deptMap = {};
-    for (const s of students) {
-      if (!deptMap[s.department]) deptMap[s.department] = [];
-      deptMap[s.department].push(s);
+    // Fetch teachers if provided
+    const teachers = [];
+    for (const tid of teacher_ids) {
+      const t = await TeacherModel.getById(tid);
+      if (t) teachers.push(t);
     }
 
-    // Interleave: alternate departments so same-dept students don't sit together
-    const interleaved = interleaveByDepartment(deptMap);
+    // ── Interleave by specialization ──────────────────────────────────────────
+    const specMap = {};
+    for (const s of students) {
+      const key = s.specialization || 'General';
+      if (!specMap[key]) specMap[key] = [];
+      specMap[key].push(s);
+    }
+    const interleaved = interleaveByKey(specMap);
 
-    // Delete old seating for this exam first (regenerate)
+    // ── Clear old seating for this exam ───────────────────────────────────────
     await SeatingModel.deleteByExam(exam_id);
 
-    // Assign seats room by room
+    // ── Assign seats room by room ─────────────────────────────────────────────
     const seatingRecords = [];
     let studentIdx = 0;
 
-    for (const room of rooms) {
-      const cols = Math.ceil(Math.sqrt(room.capacity)); // grid width
-      let seatNum = 1;
+    for (let ri = 0; ri < rooms.length; ri++) {
+      const room = rooms[ri];
+      const teacher = teachers.length > 0 ? teachers[ri % teachers.length] : null;
+      const rows = room.rows_count || Math.ceil(Math.sqrt(room.capacity));
+      const cols = room.cols_count || Math.ceil(room.capacity / rows);
 
-      while (studentIdx < interleaved.length && seatNum <= room.capacity) {
-        const student = interleaved[studentIdx];
-        const row = Math.ceil(seatNum / cols);
-        const col = seatNum - (row - 1) * cols;
-        const seat_no = `R${row}-C${col}`;
+      let seatNum = 0;
+      outer: for (let r = 1; r <= rows; r++) {
+        for (let c = 1; c <= cols; c++) {
+          if (studentIdx >= interleaved.length) break outer;
+          seatNum++;
+          if (seatNum > room.capacity) break outer;
 
-        seatingRecords.push({
-          exam_id,
-          student_id: student.id,
-          room_id: room.id,
-          seat_no,
-          shift: exam.shift,
-        });
-
-        studentIdx++;
-        seatNum++;
+          const student = interleaved[studentIdx];
+          seatingRecords.push({
+            exam_id,
+            student_id: student.id,
+            room_id: room.id,
+            teacher_id: teacher ? teacher.id : null,
+            seat_no: `R${r}-C${c}`,
+          });
+          studentIdx++;
+        }
       }
-
       if (studentIdx >= interleaved.length) break;
     }
 
@@ -133,84 +139,84 @@ const generateSeating = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: `Seating plan generated for ${seatingRecords.length} students.`,
+      message: `Seating plan generated for ${seatingRecords.length} students across ${rooms.length} room(s).`,
       exam,
+      total_students: seatingRecords.length,
+      rooms_used: rooms.length,
       seating: generated,
     });
   } catch (err) { next(err); }
 };
 
-/**
- * Interleave students from different departments cyclically
- * so no two adjacent students are from the same department
- */
-function interleaveByDepartment(deptMap) {
-  const depts = Object.values(deptMap);
+// ─── Interleave students from different specializations ───────────────────────
+function interleaveByKey(groupMap) {
+  const groups = Object.values(groupMap);
+  groups.sort((a, b) => b.length - a.length); // largest groups first
   const result = [];
-
-  // Sort so largest departments get spread first
-  depts.sort((a, b) => b.length - a.length);
-
-  let remaining = depts.filter(d => d.length > 0);
-  while (remaining.some(d => d.length > 0)) {
-    for (const dept of remaining) {
-      if (dept.length > 0) result.push(dept.shift());
+  while (groups.some(g => g.length > 0)) {
+    for (const g of groups) {
+      if (g.length > 0) result.push(g.shift());
     }
-    remaining = remaining.filter(d => d.length > 0);
   }
   return result;
 }
 
-/**
- * GET /api/seating/pdf?exam_id=&date=&shift=
- */
+// ─── GET /api/seating/pdf?exam_id= ───────────────────────────────────────────
 const downloadPDF = async (req, res, next) => {
   try {
-    const { exam_id, date, shift } = req.query;
-    const records = await SeatingModel.getAll({ exam_id, date, shift });
+    const { exam_id } = req.query;
+    if (!exam_id) return res.status(400).json({ success: false, message: 'exam_id is required.' });
 
+    const exam = await ExamModel.getById(exam_id);
+    if (!exam) return res.status(404).json({ success: false, message: 'Exam not found.' });
+
+    const records = await SeatingModel.getAll({ exam_id });
     if (!records.length) {
-      return res.status(404).json({ success: false, message: 'No seating data found for the given filters.' });
+      return res.status(404).json({ success: false, message: 'No seating plan found. Generate first.' });
     }
 
-    // Get exam details
-    let examTitle = 'Exam Seating Plan';
-    let examDateStr = date || '';
-    let examShift = shift || '';
-    if (exam_id) {
-      const exam = await ExamModel.getById(exam_id);
-      if (exam) {
-        examTitle = exam.title;
-        examDateStr = exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('en-IN') : examDateStr;
-        examShift = exam.shift || examShift;
-
-        // Ensure PDF can only be downloaded within 2 hours of the exam start time
-        if (exam.exam_date && exam.start_time) {
-          const dateStr = new Date(exam.exam_date).toISOString().split('T')[0];
-          const examDateTime = new Date(`${dateStr}T${exam.start_time}`);
-          const now = new Date();
-          const diffHours = (examDateTime - now) / (1000 * 60 * 60);
-
-          if (diffHours > 2) {
-            return res.status(403).json({ 
-              success: false, 
-              message: 'Seating plan can only be downloaded starting 2 hours before the exam.' 
-            });
-          }
-        }
-      }
-    }
-
-    // Group records by room
+    // Group by room
     const roomMap = {};
     for (const r of records) {
-      if (!roomMap[r.room_no]) roomMap[r.room_no] = [];
-      roomMap[r.room_no].push(r);
+      if (!roomMap[r.room_no]) {
+        roomMap[r.room_no] = {
+          room_no: r.room_no,
+          floor: r.floor,
+          block: r.block,
+          teacher_name: r.teacher_name,
+          teacher_dept: r.teacher_dept,
+          seats: [],
+        };
+      }
+      roomMap[r.room_no].seats.push(r);
     }
 
-    const roomTables = Object.entries(roomMap).map(([room_no, seats]) => `
+    const examDate = exam.exam_date
+      ? new Date(exam.exam_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '—';
+
+    const examTypeBadgeColor = {
+      'End Sem': '#059669',
+      'Mid Sem': '#2563eb',
+      'Back Exam': '#dc2626',
+    }[exam.exam_type] || '#6b7280';
+
+    const roomSections = Object.values(roomMap).map(room => `
       <div class="room-section">
-        <h3>Room: ${room_no}</h3>
+        <div class="room-header">
+          <div class="room-title">
+            <span class="room-icon">🏫</span>
+            <div>
+              <h3>Room: ${room.room_no}</h3>
+              <span class="room-meta">${[room.block ? 'Block ' + room.block : '', room.floor ? 'Floor ' + room.floor : ''].filter(Boolean).join(' • ')}</span>
+            </div>
+          </div>
+          <div class="invigilator-tag">
+            <span style="opacity:0.7">Invigilator:</span>
+            <strong>${room.teacher_name || '—'}</strong>
+            ${room.teacher_dept ? `<span style="opacity:0.7">(${room.teacher_dept})</span>` : ''}
+          </div>
+        </div>
         <table>
           <thead>
             <tr>
@@ -218,82 +224,130 @@ const downloadPDF = async (req, res, next) => {
               <th>Seat No</th>
               <th>Student Name</th>
               <th>Roll No</th>
-              <th>Department</th>
-              <th>Shift</th>
+              <th>Course</th>
+              <th>Specialization</th>
             </tr>
           </thead>
           <tbody>
-            ${seats.map((s, i) => `
-              <tr>
+            ${room.seats.map((s, i) => `
+              <tr class="${i % 2 === 0 ? 'even' : 'odd'}">
                 <td>${i + 1}</td>
-                <td>${s.seat_no}</td>
-                <td>${s.student_name}</td>
+                <td><span class="seat-badge">${s.seat_no}</span></td>
+                <td class="bold">${s.student_name}</td>
                 <td>${s.roll_no}</td>
-                <td>${s.department}</td>
-                <td>${s.shift}</td>
+                <td>${s.course}</td>
+                <td>${s.specialization || '—'}</td>
               </tr>`).join('')}
           </tbody>
         </table>
+        <div class="room-footer">Total students in this room: <strong>${room.seats.length}</strong></div>
       </div>
     `).join('');
 
-    const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8"/>
-      <title>${examTitle}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a2e; background: #fff; }
-        .header { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 32px 40px; }
-        .header h1 { font-size: 24px; font-weight: 700; }
-        .header .meta { display: flex; gap: 32px; margin-top: 12px; font-size: 14px; opacity: 0.9; }
-        .header .meta span { display: flex; align-items: center; gap: 6px; }
-        .content { padding: 24px 40px; }
-        .summary { display: flex; gap: 16px; margin-bottom: 24px; }
-        .summary-card { flex: 1; background: #f4f3ff; border: 1px solid #e0e7ff; border-radius: 8px; padding: 16px; text-align: center; }
-        .summary-card .number { font-size: 28px; font-weight: 700; color: #4f46e5; }
-        .summary-card .label { font-size: 12px; color: #64748b; margin-top: 4px; }
-        .room-section { margin-bottom: 28px; page-break-inside: avoid; }
-        .room-section h3 { font-size: 16px; font-weight: 600; color: #4f46e5; border-bottom: 2px solid #e0e7ff; padding-bottom: 8px; margin-bottom: 12px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        thead tr { background: #4f46e5; color: white; }
-        th { padding: 10px 12px; text-align: left; }
-        td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
-        tbody tr:nth-child(even) { background: #f8fafc; }
-        .footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 16px; border-top: 1px solid #e2e8f0; margin-top: 16px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h1>${examTitle}</h1>
-        <div class="meta">
-          <span>📅 Date: ${examDateStr}</span>
-          <span>🕐 Shift: ${examShift}</span>
-          <span>🏫 Rooms: ${Object.keys(roomMap).length}</span>
-          <span>👥 Students: ${records.length}</span>
-        </div>
-      </div>
-      <div class="content">
-        <div class="summary">
-          <div class="summary-card"><div class="number">${records.length}</div><div class="label">Total Students</div></div>
-          <div class="summary-card"><div class="number">${Object.keys(roomMap).length}</div><div class="label">Rooms Used</div></div>
-          <div class="summary-card"><div class="number">${[...new Set(records.map(r => r.department))].length}</div><div class="label">Departments</div></div>
-        </div>
-        ${roomTables}
-      </div>
-      <div class="footer">Generated on ${new Date().toLocaleString('en-IN')} • Exam Seating Management System</div>
-    </body>
-    </html>`;
+    const departments = [...new Set(records.map(r => r.specialization).filter(Boolean))];
 
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${exam.title} — Seating Plan</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111827; background: #fff; font-size: 12px; }
+
+    .page-header { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%); color: white; padding: 28px 36px; }
+    .institute { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; margin-bottom: 6px; }
+    .exam-title { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+    .exam-meta { display: flex; flex-wrap: wrap; gap: 20px; font-size: 11px; opacity: 0.9; }
+    .exam-meta span { display: flex; align-items: center; gap: 5px; }
+    .exam-type-badge { 
+      display: inline-block; padding: 3px 10px; border-radius: 99px; 
+      background: ${examTypeBadgeColor}; color: white; font-size: 11px; font-weight: 600;
+      margin-left: 8px; vertical-align: middle;
+    }
+
+    .stats-bar { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; }
+    .stat { flex: 1; padding: 16px 20px; text-align: center; border-right: 1px solid #e5e7eb; }
+    .stat:last-child { border-right: none; }
+    .stat-num { font-size: 26px; font-weight: 700; color: #4338ca; }
+    .stat-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+
+    .content { padding: 24px 36px; }
+
+    .room-section { margin-bottom: 32px; page-break-inside: avoid; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    .room-header { background: #f8fafc; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; }
+    .room-title { display: flex; align-items: center; gap: 12px; }
+    .room-icon { font-size: 20px; }
+    .room-title h3 { font-size: 15px; font-weight: 700; color: #1e1b4b; }
+    .room-meta { font-size: 11px; color: #6b7280; }
+    .invigilator-tag { font-size: 11px; color: #374151; background: #ede9fe; padding: 6px 14px; border-radius: 6px; }
+    .invigilator-tag strong { color: #4338ca; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead tr { background: #4338ca; color: white; }
+    th { padding: 9px 14px; text-align: left; font-weight: 600; letter-spacing: 0.5px; }
+    td { padding: 8px 14px; }
+    tr.even { background: #fff; }
+    tr.odd { background: #f9fafb; }
+    td.bold { font-weight: 600; }
+    .seat-badge { background: #ede9fe; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+
+    .room-footer { padding: 10px 20px; font-size: 11px; color: #6b7280; background: #f8fafc; border-top: 1px solid #e5e7eb; text-align: right; }
+
+    .page-footer { text-align: center; font-size: 10px; color: #9ca3af; padding: 16px 36px; border-top: 1px solid #e5e7eb; margin-top: 8px; }
+
+    @media print { .room-section { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div class="institute">Exam Seating Management System</div>
+    <div class="exam-title">
+      ${exam.title}
+      <span class="exam-type-badge">${exam.exam_type}</span>
+    </div>
+    <div class="exam-meta">
+      <span>📅 Date: <strong>${examDate}</strong></span>
+      <span>⏰ Time: <strong>${exam.start_time} – ${exam.end_time}</strong></span>
+      <span>📚 Course: <strong>${exam.course}</strong></span>
+      <span>📖 Semester: <strong>Sem ${exam.semester}</strong></span>
+      ${exam.subject ? `<span>📝 Subject: <strong>${exam.subject}</strong></span>` : ''}
+    </div>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat"><div class="stat-num">${records.length}</div><div class="stat-label">Total Students</div></div>
+    <div class="stat"><div class="stat-num">${Object.keys(roomMap).length}</div><div class="stat-label">Rooms Used</div></div>
+    <div class="stat"><div class="stat-num">${departments.length}</div><div class="stat-label">Specializations</div></div>
+    <div class="stat"><div class="stat-num">${exam.semester}</div><div class="stat-label">Semester</div></div>
+  </div>
+
+  <div class="content">
+    ${roomSections}
+  </div>
+
+  <div class="page-footer">
+    Generated on ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; Exam Seating Automation System
+  </div>
+</body>
+</html>`;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
     await browser.close();
 
-    const filename = `Seating_Plan_${examDateStr || 'all'}_${examShift || 'all'}.pdf`.replace(/\s+/g, '_');
+    const safeTitle = exam.title.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
+    const filename = `SeatingPlan_${safeTitle}_Sem${exam.semester}.pdf`;
+
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -303,4 +357,4 @@ const downloadPDF = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getSeating, getStudentSeating, generateSeating, deleteSeat, downloadPDF };
+module.exports = { getSeating, generateSeating, deleteSeat, clearSeatingForExam, downloadPDF };

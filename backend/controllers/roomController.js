@@ -1,13 +1,13 @@
 const RoomModel = require('../models/roomModel');
 
-const getAll = async (req, res, next) => {
+const getAllRooms = async (req, res, next) => {
   try {
     const rooms = await RoomModel.getAll();
     res.json({ success: true, rooms });
   } catch (err) { next(err); }
 };
 
-const getById = async (req, res, next) => {
+const getRoom = async (req, res, next) => {
   try {
     const room = await RoomModel.getById(req.params.id);
     if (!room) return res.status(404).json({ success: false, message: 'Room not found.' });
@@ -15,24 +15,28 @@ const getById = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-const create = async (req, res, next) => {
+const createRoom = async (req, res, next) => {
   try {
-    const id = await RoomModel.create(req.body);
+    const { room_no, capacity, rows_count, cols_count, floor, block } = req.body;
+    if (!room_no || !capacity) {
+      return res.status(400).json({ success: false, message: 'room_no and capacity are required.' });
+    }
+    const id = await RoomModel.create({ room_no, capacity, rows_count, cols_count, floor, block });
     const room = await RoomModel.getById(id);
-    res.status(201).json({ success: true, message: 'Room created.', room });
+    res.status(201).json({ success: true, room });
   } catch (err) { next(err); }
 };
 
-const update = async (req, res, next) => {
+const updateRoom = async (req, res, next) => {
   try {
     const affected = await RoomModel.update(req.params.id, req.body);
     if (!affected) return res.status(404).json({ success: false, message: 'Room not found.' });
     const room = await RoomModel.getById(req.params.id);
-    res.json({ success: true, message: 'Room updated.', room });
+    res.json({ success: true, room });
   } catch (err) { next(err); }
 };
 
-const remove = async (req, res, next) => {
+const deleteRoom = async (req, res, next) => {
   try {
     const affected = await RoomModel.delete(req.params.id);
     if (!affected) return res.status(404).json({ success: false, message: 'Room not found.' });
@@ -40,4 +44,4 @@ const remove = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, getById, create, update, remove };
+module.exports = { getAllRooms, getRoom, createRoom, updateRoom, deleteRoom };

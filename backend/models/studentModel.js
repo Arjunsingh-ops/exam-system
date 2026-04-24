@@ -1,26 +1,24 @@
 const { pool } = require('../config/db');
 
 const StudentModel = {
-  async getAll({ search = '', department = '', page = 1, limit = 20 } = {}) {
+  async getAll({ search = '', course = '', semester = '', page = 1, limit = 50 } = {}) {
     const offset = (page - 1) * limit;
     let where = 'WHERE 1=1';
     const params = [];
 
     if (search) {
-      where += ' AND (s.name LIKE ? OR s.roll_no LIKE ? OR s.enrollment_no LIKE ?)';
+      where += ' AND (name LIKE ? OR roll_no LIKE ? OR enrollment_no LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
-    if (department) {
-      where += ' AND s.department = ?';
-      params.push(department);
-    }
+    if (course) { where += ' AND course = ?'; params.push(course); }
+    if (semester) { where += ' AND semester = ?'; params.push(Number(semester)); }
 
     const [rows] = await pool.query(
-      `SELECT s.* FROM students s ${where} ORDER BY s.id DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM students ${where} ORDER BY course, semester, roll_no LIMIT ? OFFSET ?`,
       [...params, Number(limit), Number(offset)]
     );
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) as total FROM students s ${where}`, params
+      `SELECT COUNT(*) as total FROM students ${where}`, params
     );
     return { students: rows, total, page: Number(page), limit: Number(limit) };
   },
@@ -30,18 +28,12 @@ const StudentModel = {
     return rows[0] || null;
   },
 
-  async getByUserId(userId) {
-    const [rows] = await pool.query('SELECT * FROM students WHERE user_id = ?', [userId]);
-    return rows[0] || null;
-  },
-
   async create(data) {
-    const fields = Object.keys(data);
-    const values = Object.values(data);
+    const fields = ['name', 'roll_no', 'enrollment_no', 'course', 'batch', 'specialization', 'semester', 'email', 'contact'];
+    const values = fields.map(f => data[f] || null);
     const placeholders = fields.map(() => '?').join(', ');
     const [result] = await pool.query(
-      `INSERT INTO students (${fields.join(', ')}) VALUES (${placeholders})`,
-      values
+      `INSERT INTO students (${fields.join(', ')}) VALUES (${placeholders})`, values
     );
     return result.insertId;
   },
@@ -58,10 +50,14 @@ const StudentModel = {
     return result.affectedRows;
   },
 
+  async deleteAll() {
+    const [result] = await pool.query('DELETE FROM students');
+    return result.affectedRows;
+  },
+
   async bulkCreate(students) {
     if (!students.length) return 0;
-    const fields = ['name', 'roll_no', 'enrollment_no', 'department', 'program',
-      'specialization', 'year', 'semester', 'section', 'email', 'contact', 'exam_type'];
+    const fields = ['name', 'roll_no', 'enrollment_no', 'course', 'batch', 'specialization', 'semester', 'email', 'contact'];
     const values = students.map(s => fields.map(f => s[f] || null));
     const placeholders = students.map(() => `(${fields.map(() => '?').join(',')})`).join(',');
     const flat = values.flat();
@@ -71,9 +67,16 @@ const StudentModel = {
     return result.affectedRows;
   },
 
-  async getDepartments() {
-    const [rows] = await pool.query('SELECT DISTINCT department FROM students ORDER BY department');
-    return rows.map(r => r.department);
+  async getCourses() {
+    const [rows] = await pool.query('SELECT DISTINCT course FROM students ORDER BY course');
+    return rows.map(r => r.course);
+  },
+
+  async getStats() {
+    const [[{ total }]] = await pool.query('SELECT COUNT(*) as total FROM students');
+    const [courses] = await pool.query('SELECT DISTINCT course FROM students');
+    const [sems] = await pool.query('SELECT DISTINCT semester FROM students ORDER BY semester');
+    return { total, courses: courses.length, semesters: sems.map(r => r.semester) };
   },
 };
 

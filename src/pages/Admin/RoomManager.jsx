@@ -11,7 +11,7 @@ export function RoomManager() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ room_no: "", capacity: 30, benches: 15, floor: "", block: "" });
+  const [formData, setFormData] = useState({ room_no: "", capacity: 30, benches: 15, floor: "", block: "", teacher_name: "" });
 
   useEffect(() => {
     fetchRooms();
@@ -40,7 +40,7 @@ export function RoomManager() {
         toast.success("Room created successfully");
       }
       setEditingId(null);
-      setFormData({ room_no: "", capacity: 30, benches: 15, floor: "", block: "" });
+      setFormData({ room_no: "", capacity: 30, benches: 15, floor: "", block: "", teacher_name: "" });
       fetchRooms();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to save room");
@@ -54,7 +54,8 @@ export function RoomManager() {
       capacity: room.capacity,
       benches: room.benches,
       floor: room.floor || "",
-      block: room.block || ""
+      block: room.block || "",
+      teacher_name: room.teacher_name || ""
     });
   };
 
@@ -71,7 +72,7 @@ export function RoomManager() {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setFormData({ room_no: "", capacity: 30, benches: 15, floor: "", block: "" });
+    setFormData({ room_no: "", capacity: 30, benches: 15, floor: "", block: "", teacher_name: "" });
   };
 
   return (
@@ -140,6 +141,15 @@ export function RoomManager() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="teacher_name">Evaluator / Teacher Name</Label>
+                <Input
+                  id="teacher_name"
+                  placeholder="Ex: Prof. Robert J."
+                  value={formData.teacher_name}
+                  onChange={(e) => setFormData({ ...formData, teacher_name: e.target.value })}
+                />
+              </div>
               <div className="pt-2 flex gap-2">
                 <Button type="submit" className="flex-1">
                   {editingId ? <Save className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
@@ -173,6 +183,7 @@ export function RoomManager() {
                       <TableHead>Capacity</TableHead>
                       <TableHead>Benches</TableHead>
                       <TableHead>Location</TableHead>
+                      <TableHead>Teacher</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -183,6 +194,7 @@ export function RoomManager() {
                         <TableCell>{room.capacity}</TableCell>
                         <TableCell>{room.benches}</TableCell>
                         <TableCell>{[room.floor, room.block].filter(Boolean).join(", ") || "-"}</TableCell>
+                        <TableCell className="font-medium text-indigo-600 dark:text-indigo-400">{room.teacher_name || "-"}</TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="sm" onClick={() => handleEdit(room)}>
                             <Edit2 className="w-4 h-4 text-slate-500" />

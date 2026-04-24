@@ -1,36 +1,33 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { AppLayout } from "./components/layout/AppLayout";
-import { Login } from "./pages/Auth/Login";
-import { StudentDashboard } from "./pages/Student/Dashboard";
-import { DashboardHome } from "./pages/Admin/DashboardHome";
-import { StudentManager } from "./pages/Admin/StudentManager";
-import { ExamManager } from "./pages/Admin/ExamManager";
-import { SeatingGenerator } from "./pages/Admin/SeatingGenerator";
-
-import { Register } from "./pages/Auth/Register";
-import { StudentProfile } from "./pages/Student/Profile";
-import { RoomManager } from "./pages/Admin/RoomManager";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AppLayout } from './components/layout/AppLayout';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { Login }        from './pages/Login';
+import { Dashboard }    from './pages/Dashboard';
+import { Students }     from './pages/Students';
+import { Rooms }        from './pages/Rooms';
+import { Exams }        from './pages/Exams';
+import { Teachers }     from './pages/Teachers';
+import { SeatingPlan }  from './pages/SeatingPlan';
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/"      element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        
-        <Route path="/student" element={<AppLayout />}>
-          <Route index element={<StudentDashboard />} />
-          <Route path="profile" element={<StudentProfile />} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route path="/admin" element={<AppLayout />}>
+            <Route index          element={<Dashboard />} />
+            <Route path="students"  element={<Students />} />
+            <Route path="rooms"     element={<Rooms />} />
+            <Route path="exams"     element={<Exams />} />
+            <Route path="teachers"  element={<Teachers />} />
+            <Route path="seating"   element={<SeatingPlan />} />
+          </Route>
         </Route>
 
-        <Route path="/admin" element={<AppLayout />}>
-          <Route index element={<DashboardHome />} />
-          <Route path="students" element={<StudentManager />} />
-          <Route path="exams" element={<ExamManager />} />
-          <Route path="rooms" element={<RoomManager />} />
-          <Route path="seating" element={<SeatingGenerator />} />
-        </Route>
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );

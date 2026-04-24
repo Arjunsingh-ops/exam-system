@@ -1,18 +1,18 @@
 const router = require('express').Router();
-const ctrl = require('../controllers/studentController');
-const { validate, schemas } = require('../middleware/validate');
-const { authenticate, authorizeAdmin } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
+const {
+  getAllStudents, getStudent, createStudent, updateStudent,
+  deleteStudent, getCourses, uploadCSV, clearAllStudents
+} = require('../controllers/studentController');
 const upload = require('../middleware/upload');
 
-router.use(authenticate);
-
-router.get('/',                              ctrl.getAll);
-router.get('/departments',                   ctrl.getDepartments);
-router.get('/me',                            ctrl.getMyProfile);
-router.post('/me',                           validate(schemas.student), ctrl.upsertMyProfile);
-router.get('/:id',                           ctrl.getById);
-router.post('/',     authorizeAdmin, validate(schemas.student), ctrl.create);
-router.put('/:id',   authorizeAdmin, validate(schemas.student), ctrl.update);
-router.delete('/:id',authorizeAdmin,                            ctrl.remove);
+router.get('/',           authenticate, getAllStudents);
+router.get('/courses',    authenticate, getCourses);
+router.get('/:id',        authenticate, getStudent);
+router.post('/',          authenticate, createStudent);
+router.put('/:id',        authenticate, updateStudent);
+router.delete('/clear',   authenticate, clearAllStudents);
+router.delete('/:id',     authenticate, deleteStudent);
+router.post('/upload-csv', authenticate, upload.single('file'), uploadCSV);
 
 module.exports = router;

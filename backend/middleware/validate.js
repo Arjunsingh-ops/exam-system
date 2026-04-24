@@ -17,7 +17,6 @@ const registerSchema = Joi.object({
   name: Joi.string().min(2).max(150).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  role: Joi.string().valid('admin', 'student').default('student'),
 });
 
 const loginSchema = Joi.object({
@@ -49,6 +48,7 @@ const roomSchema = Joi.object({
   benches: Joi.number().integer().min(1).required(),
   floor: Joi.string().max(20).allow('', null),
   block: Joi.string().max(20).allow('', null),
+  teacher_name: Joi.string().max(150).allow('', null),
 });
 
 // Exam schemas
