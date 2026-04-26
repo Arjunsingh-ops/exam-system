@@ -1,7 +1,6 @@
 -- Create database if not exists
 CREATE DATABASE IF NOT EXISTS exam_seating_system;
 USE exam_seating_system;
-
 -- Users table (Admin auth)
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,4 +81,4 @@ CREATE TABLE IF NOT EXISTS seating (
 
 -- Default admin user (password: Admin@123)
 INSERT IGNORE INTO users (name, email, password, role) VALUES 
-('Admin', 'admin@exam.edu', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', 'admin');
+('Admin', 'admin@exam.edu', '$2a$10$.CacyIbtqrkAFainXqbMUu.z2Ij6wcWJ73BRNrGYoOeOjv61TpOsS', 'admin');
