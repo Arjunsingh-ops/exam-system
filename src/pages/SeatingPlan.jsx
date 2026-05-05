@@ -1,7 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Settings, Sparkles, DownloadCloud, Loader2, ArrowRightCircle, CheckSquare, Square, Search } from 'lucide-react';
+import { Settings, Sparkles, DownloadCloud, Loader2, Search, LayoutGrid } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { examAPI, roomAPI, teacherAPI, seatingAPI, downloadSeatingPDF } from '../services/api';
+
+// Color palette for different programs in the seat grid
+const PROGRAM_COLORS = [
+  { bg: 'rgba(108,99,255,0.15)', border: '#6c63ff', text: '#8b84ff', label: '#ede9fe' },
+  { bg: 'rgba(16,185,129,0.15)', border: '#10b981', text: '#34d399', label: '#d1fae5' },
+  { bg: 'rgba(245,158,11,0.15)', border: '#f59e0b', text: '#fbbf24', label: '#fef3c7' },
+  { bg: 'rgba(236,72,153,0.15)', border: '#ec4899', text: '#f472b6', label: '#fce7f3' },
+  { bg: 'rgba(59,130,246,0.15)', border: '#3b82f6', text: '#60a5fa', label: '#dbeafe' },
+  { bg: 'rgba(168,85,247,0.15)', border: '#a855f7', text: '#c084fc', label: '#f3e8ff' },
+];
+
+function getProgramColor(program, programList) {
+  const idx = programList.indexOf(program);
+  return PROGRAM_COLORS[idx >= 0 ? idx % PROGRAM_COLORS.length : 0];
+}
 
 export function SeatingPlan() {
   const [exams, setExams] = useState([]);
@@ -116,6 +131,11 @@ export function SeatingPlan() {
   const selectedExamDetails = exams.find(e => e.id === parseInt(selectedExamId));
   const activeRoomData = previewData.find(r => r.room_no === viewingRoom);
 
+  // Extract all unique programs from seating data for color assignment
+  const allPrograms = [...new Set(
+    previewData.flatMap(r => r.seats.map(s => s.program)).filter(Boolean)
+  )];
+
   return (
     <div className="fade-in flex flex-col h-[calc(100vh-64px)] overflow-hidden pb-4">
       <div className="page-header shrink-0 flex justify-between items-end mb-4">
@@ -140,9 +160,18 @@ export function SeatingPlan() {
               <select className="input" value={selectedExamId} onChange={e => setSelectedExamId(e.target.value)}>
                 <option value="">-- Choose Exam --</option>
                 {exams.map(e => (
-                  <option key={e.id} value={e.id}>{e.title} ({e.course} - Sem {e.semester})</option>
+                  <option key={e.id} value={e.id}>
+                    {e.title} — {e.course_name}{e.course_code ? ` (${e.course_code})` : ''} — {e.programs} Sem {e.semester}
+                  </option>
                 ))}
               </select>
+              {selectedExamDetails && (
+                <div className="mt-3 p-3 rounded-lg bg-surface2 border border-custom text-xs space-y-1">
+                  <div><span className="text-muted">Course:</span> <strong>{selectedExamDetails.course_name}</strong> {selectedExamDetails.course_code && <span className="text-muted">({selectedExamDetails.course_code})</span>}</div>
+                  <div><span className="text-muted">Programs:</span> <strong>{selectedExamDetails.programs}</strong></div>
+                  <div><span className="text-muted">Semester:</span> <strong>{selectedExamDetails.semester}</strong></div>
+                </div>
+              )}
             </div>
 
             <div className="card !p-0 shrink-0 overflow-hidden flex flex-col" style={{ maxHeight: 300 }}>
@@ -225,6 +254,22 @@ export function SeatingPlan() {
                       <div className="text-[10px] opacity-70 font-normal">{r.seats.length} Students</div>
                     </button>
                   ))}
+
+                  {/* Program Legend */}
+                  {allPrograms.length > 1 && (
+                    <div className="mt-4 px-4 pt-4 border-t border-custom">
+                      <div className="text-[10px] uppercase tracking-wider text-muted font-bold mb-2">Program Legend</div>
+                      {allPrograms.map(p => {
+                        const color = getProgramColor(p, allPrograms);
+                        return (
+                          <div key={p} className="flex items-center gap-2 mb-1.5">
+                            <div style={{ width: 10, height: 10, borderRadius: 3, background: color.border, flexShrink: 0 }} />
+                            <span className="text-[11px] text-text truncate">{p}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Grid Visualizer */}
@@ -259,22 +304,33 @@ export function SeatingPlan() {
                           return Array.from({ length: activeRoomData.cols }).map((_, colIndex) => {
                             const seatId = `R${rowIndex + 1}-C${colIndex + 1}`;
                             const student = activeRoomData.seats.find(s => s.seat_no === seatId);
+                            const programColor = student ? getProgramColor(student.program, allPrograms) : null;
 
                             return (
                               <div 
                                 key={seatId} 
-                                className={`w-[85px] h-[90px] rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all ${
+                                className={`w-[90px] h-[95px] rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all ${
                                   student 
-                                    ? 'bg-surface border-accent shadow-[0_0_15px_rgba(108,99,255,0.15)] hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(108,99,255,0.3)]' 
+                                    ? 'hover:-translate-y-1' 
                                     : 'bg-transparent border-dashed border-[#2e2a45] opacity-40'
                                 }`}
-                                title={student ? `${student.student_name} (${student.specialization || 'Gen'})` : 'Empty Seat'}
+                                style={student ? {
+                                  background: programColor.bg,
+                                  borderColor: programColor.border,
+                                  boxShadow: `0 0 15px ${programColor.bg}`,
+                                } : {}}
+                                title={student ? `${student.student_name} (${student.program} — ${student.specialization || 'Gen'})` : 'Empty Seat'}
                               >
                                 <span className="text-[9px] font-mono text-muted mb-auto mt-1 tracking-widest">{seatId}</span>
                                 {student ? (
                                   <>
                                     <div className="font-bold text-[11px] leading-tight text-white line-clamp-2 w-full px-1">{student.student_name.split(' ')[0]}</div>
-                                    <div className="text-[9px] text-[#8b84ff] mt-auto mb-1 px-1 bg-[#8b84ff22] rounded w-full truncate">{student.specialization || 'GEN'}</div>
+                                    <div 
+                                      className="text-[9px] mt-auto mb-1 px-1 rounded w-full truncate font-semibold"
+                                      style={{ color: programColor.text, background: `${programColor.text}22` }}
+                                    >
+                                      {student.program}
+                                    </div>
                                   </>
                                 ) : (
                                   <div className="text-[10px] text-muted mt-auto mb-3">Empty</div>
@@ -303,5 +359,3 @@ export function SeatingPlan() {
     </div>
   );
 }
-
-import { LayoutGrid } from 'lucide-react';

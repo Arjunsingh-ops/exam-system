@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, FileText, Loader2, Calendar, Clock, BookOpen } from 'lucide-react';
+import { Plus, Edit2, Trash2, FileText, Loader2, Calendar, Clock, BookOpen, Code2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { examAPI } from '../services/api';
 
@@ -11,9 +11,10 @@ export function Exams() {
   
   const [form, setForm] = useState({
     title: '',
-    course: '',
+    course_name: '',
+    course_code: '',
+    programs: '',
     semester: 1,
-    subject: '',
     exam_type: 'End Sem',
     exam_date: '',
     start_time: '',
@@ -43,7 +44,7 @@ export function Exams() {
     } else {
       setEditingId(null);
       setForm({
-        title: '', course: '', semester: 1, subject: '', 
+        title: '', course_name: '', course_code: '', programs: '', semester: 1,
         exam_type: 'End Sem', exam_date: '', start_time: '', end_time: ''
       });
     }
@@ -113,6 +114,7 @@ export function Exams() {
               <tr>
                 <th>Exam Details</th>
                 <th>Course Info</th>
+                <th>Program(s)</th>
                 <th>Type</th>
                 <th>Schedule</th>
                 <th className="text-right">Actions</th>
@@ -123,13 +125,24 @@ export function Exams() {
                 <tr key={exam.id}>
                   <td>
                     <div className="font-semibold">{exam.title}</div>
-                    <div className="text-xs text-muted flex items-center gap-1 mt-1">
-                      <BookOpen size={12} /> {exam.subject || 'No subject specified'}
-                    </div>
                   </td>
                   <td>
-                    <div className="font-medium text-sm">{exam.course}</div>
+                    <div className="font-medium text-sm flex items-center gap-1">
+                      <BookOpen size={12} className="text-accent" /> {exam.course_name}
+                    </div>
+                    {exam.course_code && (
+                      <div className="text-xs text-muted flex items-center gap-1 mt-1">
+                        <Code2 size={10} /> {exam.course_code}
+                      </div>
+                    )}
                     <div className="text-xs text-muted mt-1">Semester {exam.semester}</div>
+                  </td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {exam.programs.split(',').map((p, i) => (
+                        <span key={i} className="badge badge-purple">{p.trim()}</span>
+                      ))}
+                    </div>
                   </td>
                   <td>
                     <span className={`badge ${getTypeColor(exam.exam_type)}`}>{exam.exam_type}</span>
@@ -179,13 +192,33 @@ export function Exams() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="label">Target Course *</label>
+                  <label className="label">Course Name *</label>
                   <input 
                     type="text" className="input" 
-                    value={form.course} onChange={e => setForm({...form, course: e.target.value})}
-                    placeholder="e.g. B.Tech" required 
+                    value={form.course_name} onChange={e => setForm({...form, course_name: e.target.value})}
+                    placeholder="e.g. Data Structures" required 
                   />
-                  <p className="text-[10px] text-muted mt-1">Matches with students CSV</p>
+                  <p className="text-[10px] text-muted mt-1">The subject being examined</p>
+                </div>
+                <div className="form-group">
+                  <label className="label">Course Code</label>
+                  <input 
+                    type="text" className="input" 
+                    value={form.course_code} onChange={e => setForm({...form, course_code: e.target.value})}
+                    placeholder="e.g. CS201" 
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="label">Target Program(s) *</label>
+                  <input 
+                    type="text" className="input" 
+                    value={form.programs} onChange={e => setForm({...form, programs: e.target.value})}
+                    placeholder="e.g. B.Tech, M.Tech" required 
+                  />
+                  <p className="text-[10px] text-muted mt-1">Comma-separated programs (e.g. B.Tech, M.Tech)</p>
                 </div>
                 <div className="form-group">
                   <label className="label">Semester *</label>
@@ -197,25 +230,16 @@ export function Exams() {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="label">Subject (Optional)</label>
-                  <input 
-                    type="text" className="input" 
-                    value={form.subject} onChange={e => setForm({...form, subject: e.target.value})}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="label">Exam Type *</label>
-                  <select 
-                    className="input" 
-                    value={form.exam_type} onChange={e => setForm({...form, exam_type: e.target.value})}
-                  >
-                    <option value="End Sem">End Semester</option>
-                    <option value="Mid Sem">Mid Semester</option>
-                    <option value="Back Exam">Back Exam</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label className="label">Exam Type *</label>
+                <select 
+                  className="input" 
+                  value={form.exam_type} onChange={e => setForm({...form, exam_type: e.target.value})}
+                >
+                  <option value="End Sem">End Semester</option>
+                  <option value="Mid Sem">Mid Semester</option>
+                  <option value="Back Exam">Back Exam</option>
+                </select>
               </div>
 
               <div className="form-group border-t border-custom pt-4 mt-2">

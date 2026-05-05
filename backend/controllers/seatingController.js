@@ -35,12 +35,17 @@ const clearSeatingForExam = async (req, res, next) => {
 /**
  * Body: { exam_id, room_ids: [1,2,3], teacher_ids: [1,2,3] }
  *
- * Algorithm:
- * 1. Fetch exam (course + semester used to filter students)
- * 2. Fetch matching students ordered by specialization, roll_no
- * 3. Group by specialization → interleave so no two same-spec students are adjacent
- * 4. Room-by-room: fill grid (rows × cols) seat positions
- * 5. Assign one teacher per room (round-robin from teacher_ids)
+ * Algorithm (Column-based multi-program interleaving):
+ * 1. Fetch exam → get programs (comma-separated) + semester
+ * 2. Fetch students matching ANY of the exam's programs + semester
+ * 3. Group students by program
+ * 4. Fill grid COLUMN-BY-COLUMN: each column cycles through program groups
+ *    so that same-program students sit behind each other (vertically)
+ *    but adjacent columns have different programs (horizontally)
+ * 5. This ensures:
+ *    - Students from DIFFERENT programs sit next to each other in a row
+ *    - Students from the SAME program sit in the same column (behind each other)
+ *    - Columns alternate between programs
  */
 const generateSeating = async (req, res, next) => {
   try {
@@ -52,19 +57,25 @@ const generateSeating = async (req, res, next) => {
     const exam = await ExamModel.getById(exam_id);
     if (!exam) return res.status(404).json({ success: false, message: 'Exam not found.' });
 
-    // Fetch students matching exam's course + semester
-    const conditions = ['course = ?', 'semester = ?'];
-    const params = [exam.course, exam.semester];
+    // Parse programs (comma-separated)
+    const programList = exam.programs.split(',').map(p => p.trim()).filter(Boolean);
+    if (!programList.length) {
+      return res.status(400).json({ success: false, message: 'No programs defined for this exam.' });
+    }
+
+    // Fetch students matching any of the exam's programs + semester
+    const placeholders = programList.map(() => '?').join(',');
     const [students] = await pool.query(
-      `SELECT id, name, roll_no, course, specialization, semester 
-       FROM students WHERE ${conditions.join(' AND ')} ORDER BY specialization, roll_no`,
-      params
+      `SELECT id, name, roll_no, program, specialization, year, semester 
+       FROM students WHERE program IN (${placeholders}) AND semester = ? 
+       ORDER BY program, specialization, roll_no`,
+      [...programList, exam.semester]
     );
 
     if (!students.length) {
       return res.status(400).json({
         success: false,
-        message: `No students found for Course: "${exam.course}", Semester: ${exam.semester}. Please upload student data first.`,
+        message: `No students found for Programs: "${programList.join(', ')}", Semester: ${exam.semester}. Please upload student data first.`,
       });
     }
 
@@ -91,21 +102,29 @@ const generateSeating = async (req, res, next) => {
       if (t) teachers.push(t);
     }
 
-    // ── Interleave by specialization ──────────────────────────────────────────
-    const specMap = {};
+    // ── Group students by program ─────────────────────────────────────────────
+    const programMap = {};
     for (const s of students) {
-      const key = s.specialization || 'General';
-      if (!specMap[key]) specMap[key] = [];
-      specMap[key].push(s);
+      const key = s.program || 'General';
+      if (!programMap[key]) programMap[key] = [];
+      programMap[key].push(s);
     }
-    const interleaved = interleaveByKey(specMap);
+    const programKeys = Object.keys(programMap);
+    // Sort programs by size (largest first) for better distribution
+    programKeys.sort((a, b) => programMap[b].length - programMap[a].length);
 
     // ── Clear old seating for this exam ───────────────────────────────────────
     await SeatingModel.deleteByExam(exam_id);
 
-    // ── Assign seats room by room ─────────────────────────────────────────────
+    // ── Assign seats room by room using column-based interleaving ─────────────
     const seatingRecords = [];
-    let studentIdx = 0;
+    let globalProgramOffset = 0; // tracks which program starts each room
+    
+    // Create a flat queue of students per program for sequential consumption
+    const programQueues = {};
+    for (const key of programKeys) {
+      programQueues[key] = [...programMap[key]];
+    }
 
     for (let ri = 0; ri < rooms.length; ri++) {
       const room = rooms[ri];
@@ -114,13 +133,43 @@ const generateSeating = async (req, res, next) => {
       const cols = room.cols_count || Math.ceil(room.capacity / rows);
 
       let seatNum = 0;
-      outer: for (let r = 1; r <= rows; r++) {
-        for (let c = 1; c <= cols; c++) {
-          if (studentIdx >= interleaved.length) break outer;
-          seatNum++;
-          if (seatNum > room.capacity) break outer;
+      const allExhausted = () => programKeys.every(k => programQueues[k].length === 0);
 
-          const student = interleaved[studentIdx];
+      // Fill column-by-column
+      for (let c = 1; c <= cols; c++) {
+        if (allExhausted()) break;
+
+        // Each column is assigned a starting program (offset by column index)
+        // This ensures adjacent columns start with different programs
+        const colProgramIndex = (c - 1 + globalProgramOffset) % programKeys.length;
+
+        for (let r = 1; r <= rows; r++) {
+          if (allExhausted()) break;
+          seatNum++;
+          if (seatNum > room.capacity) break;
+
+          // For each row in a column, pick the next student from the assigned program
+          // The program for this row alternates: row 1 = programA, row 2 = programB, etc.
+          // But the starting program for each column is offset
+          const rowProgramIndex = (colProgramIndex + (r - 1)) % programKeys.length;
+          
+          // Try to find a student from the target program
+          let student = null;
+          let triedPrograms = 0;
+          let tryIndex = rowProgramIndex;
+          
+          while (triedPrograms < programKeys.length) {
+            const targetProgram = programKeys[tryIndex % programKeys.length];
+            if (programQueues[targetProgram].length > 0) {
+              student = programQueues[targetProgram].shift();
+              break;
+            }
+            tryIndex++;
+            triedPrograms++;
+          }
+
+          if (!student) break; // All programs exhausted
+
           seatingRecords.push({
             exam_id,
             student_id: student.id,
@@ -128,10 +177,11 @@ const generateSeating = async (req, res, next) => {
             teacher_id: teacher ? teacher.id : null,
             seat_no: `R${r}-C${c}`,
           });
-          studentIdx++;
         }
       }
-      if (studentIdx >= interleaved.length) break;
+
+      globalProgramOffset += 1; // Next room starts with a different program offset
+      if (programKeys.every(k => programQueues[k].length === 0)) break;
     }
 
     await SeatingModel.bulkInsert(seatingRecords);
@@ -147,19 +197,6 @@ const generateSeating = async (req, res, next) => {
     });
   } catch (err) { next(err); }
 };
-
-// ─── Interleave students from different specializations ───────────────────────
-function interleaveByKey(groupMap) {
-  const groups = Object.values(groupMap);
-  groups.sort((a, b) => b.length - a.length); // largest groups first
-  const result = [];
-  while (groups.some(g => g.length > 0)) {
-    for (const g of groups) {
-      if (g.length > 0) result.push(g.shift());
-    }
-  }
-  return result;
-}
 
 // ─── GET /api/seating/pdf?exam_id= ───────────────────────────────────────────
 const downloadPDF = async (req, res, next) => {
@@ -201,6 +238,9 @@ const downloadPDF = async (req, res, next) => {
       'Back Exam': '#dc2626',
     }[exam.exam_type] || '#6b7280';
 
+    // Parse programs for display
+    const programList = exam.programs.split(',').map(p => p.trim()).filter(Boolean);
+
     const roomSections = Object.values(roomMap).map(room => `
       <div class="room-section">
         <div class="room-header">
@@ -224,8 +264,9 @@ const downloadPDF = async (req, res, next) => {
               <th>Seat No</th>
               <th>Student Name</th>
               <th>Roll No</th>
-              <th>Course</th>
+              <th>Program</th>
               <th>Specialization</th>
+              <th>Year</th>
             </tr>
           </thead>
           <tbody>
@@ -235,8 +276,9 @@ const downloadPDF = async (req, res, next) => {
                 <td><span class="seat-badge">${s.seat_no}</span></td>
                 <td class="bold">${s.student_name}</td>
                 <td>${s.roll_no}</td>
-                <td>${s.course}</td>
+                <td><span class="program-badge">${s.program}</span></td>
                 <td>${s.specialization || '—'}</td>
+                <td>${s.year || '—'}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -291,6 +333,7 @@ const downloadPDF = async (req, res, next) => {
     tr.odd { background: #f9fafb; }
     td.bold { font-weight: 600; }
     .seat-badge { background: #ede9fe; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .program-badge { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
 
     .room-footer { padding: 10px 20px; font-size: 11px; color: #6b7280; background: #f8fafc; border-top: 1px solid #e5e7eb; text-align: right; }
 
@@ -309,15 +352,16 @@ const downloadPDF = async (req, res, next) => {
     <div class="exam-meta">
       <span>📅 Date: <strong>${examDate}</strong></span>
       <span>⏰ Time: <strong>${exam.start_time} – ${exam.end_time}</strong></span>
-      <span>📚 Course: <strong>${exam.course}</strong></span>
+      <span>📚 Course: <strong>${exam.course_name}${exam.course_code ? ' (' + exam.course_code + ')' : ''}</strong></span>
+      <span>🎓 Programs: <strong>${programList.join(', ')}</strong></span>
       <span>📖 Semester: <strong>Sem ${exam.semester}</strong></span>
-      ${exam.subject ? `<span>📝 Subject: <strong>${exam.subject}</strong></span>` : ''}
     </div>
   </div>
 
   <div class="stats-bar">
     <div class="stat"><div class="stat-num">${records.length}</div><div class="stat-label">Total Students</div></div>
     <div class="stat"><div class="stat-num">${Object.keys(roomMap).length}</div><div class="stat-label">Rooms Used</div></div>
+    <div class="stat"><div class="stat-num">${programList.length}</div><div class="stat-label">Programs</div></div>
     <div class="stat"><div class="stat-num">${departments.length}</div><div class="stat-label">Specializations</div></div>
     <div class="stat"><div class="stat-num">${exam.semester}</div><div class="stat-label">Semester</div></div>
   </div>

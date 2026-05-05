@@ -9,7 +9,7 @@ const SeatingModel = {
     const [rows] = await pool.query(`
       SELECT 
         s.id, s.exam_id, s.student_id, s.room_id, s.teacher_id, s.seat_no,
-        st.name AS student_name, st.roll_no, st.course, st.specialization, st.semester,
+        st.name AS student_name, st.roll_no, st.program, st.specialization, st.year, st.semester,
         r.room_no, r.rows_count, r.cols_count, r.floor, r.block,
         t.name AS teacher_name, t.department AS teacher_dept
       FROM seating s

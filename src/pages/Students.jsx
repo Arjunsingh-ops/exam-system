@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { UploadCloud, Search, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { UploadCloud, Search, Trash2, Loader2, AlertCircle, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { studentAPI } from '../services/api';
 
@@ -155,9 +155,10 @@ export function Students() {
                 <th>Name</th>
                 <th>Roll No</th>
                 <th>Enrollment</th>
-                <th>Course</th>
+                <th>Program</th>
                 <th>Batch</th>
                 <th>Specialization</th>
+                <th>Year</th>
                 <th>Sem</th>
               </tr>
             </thead>
@@ -167,9 +168,10 @@ export function Students() {
                   <td className="font-medium">{s.name}</td>
                   <td><span className="badge badge-purple">{s.roll_no}</span></td>
                   <td className="text-muted text-xs">{s.enrollment_no}</td>
-                  <td>{s.course}</td>
+                  <td><span className="badge badge-green">{s.program}</span></td>
                   <td className="text-muted text-xs">{s.batch || '-'}</td>
                   <td>{s.specialization || '-'}</td>
+                  <td><span className="badge badge-gray">{s.year || '-'}</span></td>
                   <td><span className="badge badge-blue">S{s.semester}</span></td>
                 </tr>
               ))}
@@ -181,14 +183,15 @@ export function Students() {
       {/* CSV Format Helper */}
       <div className="mt-8 p-4 rounded-lg bg-surface2 border border-custom text-sm">
         <h4 className="font-semibold mb-2">Required CSV Format:</h4>
-        <p className="text-muted mb-2 text-xs">Your CSV file must contain a header row. Column names are flexible (e.g., 'roll_no' or 'Roll Number').</p>
+        <p className="text-muted mb-2 text-xs">Your CSV file must contain a header row. Column names are flexible (e.g., 'roll_no' or 'Roll Number'). The "program" column accepts 'course' as an alias for backward compatibility.</p>
         <div className="flex flex-wrap gap-2">
           <span className="badge badge-green">name*</span>
           <span className="badge badge-green">roll_no*</span>
           <span className="badge badge-green">enrollment_no*</span>
-          <span className="badge badge-green">course*</span>
+          <span className="badge badge-green">program*</span>
           <span className="badge badge-gray">batch</span>
           <span className="badge badge-gray">specialization</span>
+          <span className="badge badge-gray">year</span>
           <span className="badge badge-gray">semester</span>
           <span className="badge badge-gray">email</span>
           <span className="badge badge-gray">contact</span>
@@ -197,6 +200,3 @@ export function Students() {
     </div>
   );
 }
-
-// Ensure GraduationCap icon is imported correctly if not already 
-import { GraduationCap } from 'lucide-react';

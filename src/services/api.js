@@ -28,13 +28,13 @@ export const authAPI = {
 };
 
 export const studentAPI = {
-  getAll:    (params) => api.get('/students', { params }),
-  getCourses:()       => api.get('/students/courses'),
-  create:    (data)   => api.post('/students', data),
-  update:    (id, d)  => api.put(`/students/${id}`, d),
-  delete:    (id)     => api.delete(`/students/${id}`),
-  clearAll:  ()       => api.delete('/students/clear'),
-  uploadCSV: (file)   => {
+  getAll:      (params) => api.get('/students', { params }),
+  getPrograms: ()       => api.get('/students/programs'),
+  create:      (data)   => api.post('/students', data),
+  update:      (id, d)  => api.put(`/students/${id}`, d),
+  delete:      (id)     => api.delete(`/students/${id}`),
+  clearAll:    ()       => api.delete('/students/clear'),
+  uploadCSV:   (file)   => {
     const fd = new FormData();
     fd.append('file', file);
     return api.post('/students/upload-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });

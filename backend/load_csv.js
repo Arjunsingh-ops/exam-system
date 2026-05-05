@@ -26,13 +26,13 @@ async function loadData() {
       });
 
       const params = results.map(row => [
-        row.name, row.roll_no, row.enrollment_no, row.course, 
-        row.batch, row.specialization, row.semester, row.email, row.contact
+        row.name, row.roll_no, row.enrollment_no, row.program || row.course, 
+        row.batch, row.specialization, row.year || 1, row.semester, row.email, row.contact
       ]);
 
       try {
         const [result] = await db.query(
-          "INSERT IGNORE INTO students (name, roll_no, enrollment_no, course, batch, specialization, semester, email, contact) VALUES ?",
+          "INSERT IGNORE INTO students (name, roll_no, enrollment_no, program, batch, specialization, year, semester, email, contact) VALUES ?",
           [params]
         );
         console.log(`✅ Success! Inserted ${result.affectedRows} students into the database.`);

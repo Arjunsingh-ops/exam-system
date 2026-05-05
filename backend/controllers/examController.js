@@ -17,11 +17,11 @@ const getExam = async (req, res, next) => {
 
 const createExam = async (req, res, next) => {
   try {
-    const { title, subject, course, semester, exam_type, exam_date, start_time, end_time } = req.body;
-    if (!title || !course || !semester || !exam_type || !exam_date || !start_time || !end_time) {
-      return res.status(400).json({ success: false, message: 'title, course, semester, exam_type, exam_date, start_time, end_time are required.' });
+    const { title, course_name, course_code, programs, semester, exam_type, exam_date, start_time, end_time } = req.body;
+    if (!title || !course_name || !programs || !semester || !exam_type || !exam_date || !start_time || !end_time) {
+      return res.status(400).json({ success: false, message: 'title, course_name, programs, semester, exam_type, exam_date, start_time, end_time are required.' });
     }
-    const id = await ExamModel.create({ title, subject, course, semester, exam_type, exam_date, start_time, end_time });
+    const id = await ExamModel.create({ title, course_name, course_code, programs, semester, exam_type, exam_date, start_time, end_time });
     const exam = await ExamModel.getById(id);
     res.status(201).json({ success: true, exam });
   } catch (err) { next(err); }

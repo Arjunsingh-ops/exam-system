@@ -4,8 +4,8 @@ const StudentModel = require('../models/studentModel');
 
 const getAllStudents = async (req, res, next) => {
   try {
-    const { search, course, semester, page, limit } = req.query;
-    const data = await StudentModel.getAll({ search, course, semester, page, limit });
+    const { search, program, semester, page, limit } = req.query;
+    const data = await StudentModel.getAll({ search, program, semester, page, limit });
     res.json({ success: true, ...data });
   } catch (err) { next(err); }
 };
@@ -20,11 +20,11 @@ const getStudent = async (req, res, next) => {
 
 const createStudent = async (req, res, next) => {
   try {
-    const { name, roll_no, enrollment_no, course, batch, specialization, semester, email, contact } = req.body;
-    if (!name || !roll_no || !enrollment_no || !course || !semester) {
-      return res.status(400).json({ success: false, message: 'name, roll_no, enrollment_no, course, semester are required.' });
+    const { name, roll_no, enrollment_no, program, batch, specialization, year, semester, email, contact } = req.body;
+    if (!name || !roll_no || !enrollment_no || !program || !semester) {
+      return res.status(400).json({ success: false, message: 'name, roll_no, enrollment_no, program, semester are required.' });
     }
-    const id = await StudentModel.create({ name, roll_no, enrollment_no, course, batch, specialization, semester, email, contact });
+    const id = await StudentModel.create({ name, roll_no, enrollment_no, program, batch, specialization, year, semester, email, contact });
     const student = await StudentModel.getById(id);
     res.status(201).json({ success: true, student });
   } catch (err) { next(err); }
@@ -47,10 +47,10 @@ const deleteStudent = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-const getCourses = async (req, res, next) => {
+const getPrograms = async (req, res, next) => {
   try {
-    const courses = await StudentModel.getCourses();
-    res.json({ success: true, courses });
+    const programs = await StudentModel.getPrograms();
+    res.json({ success: true, programs });
   } catch (err) { next(err); }
 };
 
@@ -70,16 +70,17 @@ const uploadCSV = async (req, res, next) => {
             name: row.name || row.student_name || '',
             roll_no: row.roll_no || row.rollno || row.roll_number || '',
             enrollment_no: row.enrollment_no || row.enrollment_number || row.enroll_no || row.enrollment || '',
-            course: row.course || row.program || '',
+            program: row.program || row.course || row.programme || '',
             batch: row.batch || row.batch_year || '',
             specialization: row.specialization || row.spec || row.branch || row.stream || '',
+            year: parseInt(row.year || row.academic_year || '1') || 1,
             semester: parseInt(row.semester || row.sem || '1') || 1,
             email: row.email || row.email_id || '',
             contact: row.contact || row.phone || row.mobile || '',
           };
 
-          if (!student.name || !student.roll_no || !student.enrollment_no || !student.course) {
-            errors.push({ row: JSON.stringify(row), reason: 'Missing required fields (name, roll_no, enrollment_no, course)' });
+          if (!student.name || !student.roll_no || !student.enrollment_no || !student.program) {
+            errors.push({ row: JSON.stringify(row), reason: 'Missing required fields (name, roll_no, enrollment_no, program)' });
             return;
           }
           results.push(student);
@@ -118,4 +119,4 @@ const clearAllStudents = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAllStudents, getStudent, createStudent, updateStudent, deleteStudent, getCourses, uploadCSV, clearAllStudents };
+module.exports = { getAllStudents, getStudent, createStudent, updateStudent, deleteStudent, getPrograms, uploadCSV, clearAllStudents };

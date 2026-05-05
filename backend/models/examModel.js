@@ -13,16 +13,16 @@ const ExamModel = {
 
   async create(data) {
     const [result] = await pool.query(
-      `INSERT INTO exams (title, subject, course, semester, exam_type, exam_date, start_time, end_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.title, data.subject || null, data.course, data.semester,
-       data.exam_type, data.exam_date, data.start_time, data.end_time]
+      `INSERT INTO exams (title, course_name, course_code, programs, semester, exam_type, exam_date, start_time, end_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.title, data.course_name, data.course_code || null, data.programs,
+       data.semester, data.exam_type, data.exam_date, data.start_time, data.end_time]
     );
     return result.insertId;
   },
 
   async update(id, data) {
-    const allowed = ['title', 'subject', 'course', 'semester', 'exam_type', 'exam_date', 'start_time', 'end_time'];
+    const allowed = ['title', 'course_name', 'course_code', 'programs', 'semester', 'exam_type', 'exam_date', 'start_time', 'end_time'];
     const filtered = Object.fromEntries(Object.entries(data).filter(([k]) => allowed.includes(k)));
     if (!Object.keys(filtered).length) return 0;
     const fields = Object.keys(filtered).map(k => `${k} = ?`).join(', ');
