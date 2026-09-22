@@ -1,110 +1,147 @@
-# Exam Seating Management System — Backend
+# 🏛️ Apex University Exam Seating System — Backend API
 
-## Tech Stack
-- **Node.js** + **Express.js**
-- **MySQL** (mysql2/promise)
-- **Puppeteer** (PDF generation)
-- **JWT** (authentication)
-- **Joi** (validation)
-- **Morgan** (logging)
-- **Multer** (CSV upload)
+Production REST API and headless PDF generation service for the Examination Seating Management System.
 
-## Setup
+---
 
-### 1. Configure environment variables
-Edit `backend/.env`:
+## 🛠️ Technology Stack
+* **Runtime**: Node.js v18+ / v20 LTS
+* **Framework**: Express.js
+* **Database**: MySQL 8.0+ (`mysql2/promise` with SSL & connection pool)
+* **Document Engine**: Puppeteer (Chromium) for pixel-perfect A4 examination rosters
+* **Security**: JWT (`jsonwebtoken`), Bcrypt (`bcryptjs`), CORS
+* **Validation**: Joi
+* **File Processing**: Multer, CSV-Parser
+
+---
+
+## ⚙️ Environment Variables
+
+Copy `backend/.env.example` to `backend/.env`:
+
+```env
+PORT=5000
+NODE_ENV=development
+
+# MySQL Database Configuration
+# Supports either direct cloud URI or individual host/port parameters
+DATABASE_URL=mysql://user:password@host:port/dbname?ssl={"rejectUnauthorized":false}
+# Alternatively:
+# DB_HOST=localhost
+# DB_PORT=3306
+# DB_USER=root
+# DB_PASSWORD=your_password
+# DB_NAME=exam_seating_system
+
+# JWT Authentication
+JWT_SECRET=your_super_secret_jwt_key
+JWT_EXPIRES_IN=7d
+
+# Bcrypt Security
+BCRYPT_ROUNDS=10
+
+# Authorized Exam Planner / Administrator Account
+ADMIN_NAME=Exam Controller
+ADMIN_EMAIL=controller@apex.edu
+ADMIN_PASSWORD=YourSecurePassword123!
+
+# Cross-Origin Resource Sharing
+CORS_ORIGIN=*
 ```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=exam_seating_system
-JWT_SECRET=your_secret
-```
 
-### 2. Install dependencies
+---
+
+## 🏃 Running Locally
+
 ```bash
-cd backend
+# Install dependencies
 npm install
+
+# Run in development mode (with auto-restart)
+npm run dev
+
+# Run in production mode
+npm start
 ```
 
-### 3. Start the server
+---
+
+## 👤 Database Administrator CLI Utility
+
+Seed or reset the single authorized administrator in your local or remote cloud MySQL database:
+
 ```bash
-npm run dev     # development (nodemon)
-npm start       # production
+node scripts/seedAdmin.js <email> <password> [fullName]
+
+# Example:
+node scripts/seedAdmin.js controller@apex.edu SuperPass123! "Dr. Jane Doe"
+
+# Or via npm script:
+npm run seed:admin controller@apex.edu SuperPass123!
 ```
-The database schema is **auto-created** on first startup.
 
 ---
 
-## Default Admin Credentials
-| Email | Password |
-|---|---|
-| admin@exam.edu | password |
+## 🐳 Docker Deployment
 
-> ⚠️ Change the password immediately after first login.
+The included `Dockerfile` installs system Chromium and font packages required for headless Puppeteer PDF rendering:
+
+```bash
+docker build -t exam-backend .
+docker run -p 5000:5000 --env-file .env exam-backend
+```
 
 ---
 
-## API Reference
+## 📡 Core API Endpoints
 
-### Auth
+### 🔐 Auth (`/api/auth`)
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/auth/register` | Register user |
-| POST | `/api/auth/login` | Login |
-| GET  | `/api/auth/me` | Get current user |
+| `POST` | `/api/auth/login` | Authenticate administrator & get JWT token |
+| `GET`  | `/api/auth/me` | Fetch active planner profile |
+| `PUT`  | `/api/auth/profile` | Update planner name & email in MySQL database |
+| `PUT`  | `/api/auth/change-password` | Update planner password with bcrypt hashing |
 
-### Students
+### 👨‍🎓 Students (`/api/students`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET    | `/api/students` | List all (paginated, filterable) |
-| GET    | `/api/students/:id` | Get by ID |
-| POST   | `/api/students` | Create student |
-| PUT    | `/api/students/:id` | Update student |
-| DELETE | `/api/students/:id` | Delete student |
-| POST   | `/api/students/upload/csv` | Bulk upload via CSV |
-| GET    | `/api/students/departments` | Get unique departments |
+| `GET`    | `/api/students` | List students (search, semester, program filter, pagination) |
+| `GET`    | `/api/students/programs` | List unique registered academic programs |
+| `POST`   | `/api/students` | Register individual student |
+| `PUT`    | `/api/students/:id` | Update student details |
+| `DELETE` | `/api/students/:id` | Delete student record |
+| `DELETE` | `/api/students/clear` | Batch clear all students |
+| `POST`   | `/api/students/upload-csv` | Bulk upload CSV file |
 
-### Rooms
+### 🏛️ Rooms (`/api/rooms`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET    | `/api/rooms` | List all rooms |
-| GET    | `/api/rooms/:id` | Get by ID |
-| POST   | `/api/rooms` | Create room |
-| PUT    | `/api/rooms/:id` | Update room |
-| DELETE | `/api/rooms/:id` | Delete room |
+| `GET`    | `/api/rooms` | List all examination halls |
+| `POST`   | `/api/rooms` | Create room with row/column grid dimensions |
+| `PUT`    | `/api/rooms/:id` | Update room capacity & location |
+| `DELETE` | `/api/rooms/:id` | Delete room |
 
-### Exams
+### 📝 Exams (`/api/exams`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET    | `/api/exams` | List all exams |
-| GET    | `/api/exams/:id` | Get by ID |
-| POST   | `/api/exams` | Create exam |
-| PUT    | `/api/exams/:id` | Update exam |
-| DELETE | `/api/exams/:id` | Delete exam |
+| `GET`    | `/api/exams` | List all scheduled exams |
+| `POST`   | `/api/exams` | Schedule examination course |
+| `PUT`    | `/api/exams/:id` | Update exam date, time, and shift |
+| `DELETE` | `/api/exams/:id` | Delete examination |
 
-### Seating
+### 👨‍🏫 Teachers (`/api/teachers`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET    | `/api/seating` | Get seating (filter: exam_id, date, shift) |
-| POST   | `/api/seating/generate` | Generate seating plan |
-| GET    | `/api/seating/pdf` | Download PDF (filter: exam_id, date, shift) |
-| GET    | `/api/seating/student/:id` | Get student's seating |
-| DELETE | `/api/seating/:id` | Delete a seat record |
+| `GET`    | `/api/teachers` | List all faculty invigilators |
+| `POST`   | `/api/teachers` | Add faculty member |
+| `PUT`    | `/api/teachers/:id` | Update teacher details |
+| `DELETE` | `/api/teachers/:id` | Delete teacher |
 
----
-
-## Seating Algorithm
-1. Students are grouped by **department**
-2. Departments are **interleaved** cyclically so no two students from the same department sit adjacent
-3. Rooms are filled sequentially respecting **capacity**
-4. Seat format: `R{row}-C{col}` (e.g., `R1-C3`)
-5. Unique constraint prevents **duplicate seat** assignments per exam+room
-
-## CSV Upload Format
-See `sample_students.csv` for column reference:
-```
-name, roll_no, enrollment_no, department, program, specialization,
-year, semester, section, email, contact, exam_type
-```
+### 🪑 Seating Plan (`/api/seating`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET`    | `/api/seating?exam_id=:id` | Fetch seating allocations and room grids |
+| `POST`   | `/api/seating/generate` | Generate conflict-free seating plan |
+| `GET`    | `/api/seating/pdf?exam_id=:id` | Download official multi-room PDF document |
+| `DELETE` | `/api/seating?exam_id=:id` | Delete allocation records for an exam |
