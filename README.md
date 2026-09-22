@@ -1,7 +1,8 @@
 # 🏛️ Apex Exam Sitting Planner
 
-A production-grade, full-stack examination seating and hall planning platform. Built to automate conflict-free student seat distribution, provide real-time seating matrix visualizations, allow planners to create accounts and manage examinations, and produce multi-room A4 print-ready PDF rosters.
+A production-grade, full-stack examination seating and hall planning platform. Built to automate conflict-free student seat distribution, provide real-time seating matrix visualizations, allow planners to register their ID and manage examinations, and produce multi-room A4 print-ready PDF rosters.
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-success?style=for-the-badge&logo=vercel)](https://exam-system-gamma-smoky.vercel.app/login)
 [![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -9,6 +10,12 @@ A production-grade, full-stack examination seating and hall planning platform. B
 [![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+> 🚀 **Live Production Deployment**:  
+> **Web Portal**: [https://exam-system-gamma-smoky.vercel.app/login](https://exam-system-gamma-smoky.vercel.app/login)  
+> Anyone can register an account at **`/register`** to plan examination halls and generate seating arrangements!
 
 ---
 
@@ -25,14 +32,14 @@ A production-grade, full-stack examination seating and hall planning platform. B
 - **Atomic Database Transactions**: Generation runs inside ACID-compliant MySQL transactions with auto-rollback on conflict or failure.
 
 ### 📄 Multi-Room A4 PDF Export & Browser Print
-- **Puppeteer Headless Engine**: Produces official university seating plan documents complete with header crests, invigilator signature blocks, summary statistics, and room rosters.
+- **Puppeteer Headless Engine**: Produces official examination seating plan documents complete with header crests, invigilator signature blocks, summary statistics, and room rosters.
 - **Zero-Defect Browser Print**: Dedicated `@media print` rules ensure clean page breaks between halls with zero trailing blank sheets when printing via browser (`Ctrl + P`).
 
-### 🔒 Enterprise Single-Planner Authentication
-- **Secure by Design**: Eliminates public signup attack surfaces; access is granted exclusively to the authorized University Examination Controller.
+### 🔒 User Registration & Database Security
+- **Self-Service Planner ID Creation**: Planners and faculty can create an account directly at [`/register`](https://exam-system-gamma-smoky.vercel.app/register) with instant cloud database sync.
 - **Bcrypt & JWT Security**: 10-round salted password hashing with signed JSON Web Tokens (7-day validity).
-- **In-App Database Account Management**: Administrators can update their official login email and reset their password directly in the production MySQL database from the sidebar modal.
-- **CLI Provisioning Utility**: Seed or reset administrator credentials anytime via terminal or automated CI/CD pipeline.
+- **In-App Account & Password Management**: Users can update their name, email, and password directly in the production MySQL database from the sidebar modal.
+- **Dual Route Compatibility**: API routes are mapped to both `/api/*` and `/*` to prevent path mismatch errors across different hosting setups.
 
 ---
 
@@ -43,8 +50,8 @@ A production-grade, full-stack examination seating and hall planning platform. B
 | **Frontend** | React 19, Vite, Tailwind CSS v4, Framer Motion, Lucide Icons, Axios |
 | **Backend** | Node.js, Express.js, Puppeteer (Chromium), Joi, Multer, Morgan |
 | **Database** | MySQL 8.0+ (`mysql2/promise` with SSL & connection pooling) |
-| **Containerization** | Docker, Docker Compose, Debian Slim + Chromium |
-| **Deployment** | Vercel (Frontend), Render / Railway (Backend API), Aiven (Cloud MySQL) |
+| **Containerization** | Docker, Docker Compose, Debian Bookworm + Chromium |
+| **Live Hosting** | Frontend on **Vercel**, Backend on **Render (Docker)**, Database on **Aiven Cloud MySQL** |
 
 ---
 
@@ -71,19 +78,15 @@ Create `backend/.env` (or copy from `backend/.env.example`):
 PORT=5000
 NODE_ENV=development
 
-# Local MySQL Database
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_mysql_password
-DB_NAME=exam_seating_system
+# MySQL Database (Supports cloud URI or individual parameters)
+DATABASE_URL=mysql://user:password@host:port/dbname?ssl={"rejectUnauthorized":false}
 
 # Authentication
 JWT_SECRET=super_secret_jwt_key_for_development
 JWT_EXPIRES_IN=7d
 BCRYPT_ROUNDS=10
 
-# Authorized Exam Planner
+# Authorized Initial Planner
 ADMIN_EMAIL=controller@apex.edu
 ADMIN_PASSWORD=YourSecurePassword123!
 ADMIN_NAME=Exam Controller
@@ -94,7 +97,6 @@ Start the backend server:
 ```bash
 npm run dev
 ```
-> Database schema and the authorized planner account will be automatically created on first boot!
 
 ### 3. Configure & Start the Frontend
 In a new terminal window:
@@ -107,34 +109,30 @@ Open **`http://localhost:5173`** in your browser.
 
 ---
 
-## 🌐 Production Cloud Hosting Guide
+## 🌐 Production Cloud Hosting Setup
 
-For complete, detailed instructions, see **[`HOSTING_GUIDE.md`](HOSTING_GUIDE.md)**.
+### 1. Live Deployment Architecture
+* **Frontend**: Hosted on [Vercel](https://exam-system-gamma-smoky.vercel.app/login).
+* **Backend API**: Hosted on **Render.com** using the `backend/Dockerfile` with Debian Bookworm and headless Chromium.
+* **Database**: Hosted on **Aiven Cloud MySQL** with SSL/TLS encryption.
 
-### Architecture Recommendation (100% Free / Low-Cost)
-1. **Frontend**: Hosted on **Vercel** as a Vite Single Page Application.
-2. **Backend**: Hosted on **Render.com** (or Railway) as a Docker Web Service using the provided `backend/Dockerfile` (includes pre-installed Chromium for Puppeteer).
-3. **Database**: Hosted on **Aiven.io** or **Railway.app** (Free Cloud MySQL).
+### 2. Environment Variables Configuration
 
-### 1. Cloud Database Connection
-In your backend environment variables, provide your cloud database URI:
-```env
-DATABASE_URL=mysql://user:password@host:port/dbname?ssl={"rejectUnauthorized":false}
-```
+#### Backend (Render / VPS):
+| Key | Example Value | Description |
+|---|---|---|
+| `PORT` | `5000` | Server listening port |
+| `NODE_ENV` | `production` | Production mode |
+| `DATABASE_URL` | `mysql://avnadmin:pass@host:port/defaultdb` | Cloud MySQL URI |
+| `JWT_SECRET` | `apex_exam_planner_super_secret_jwt_key` | Secret key for signing JWTs |
+| `CORS_ORIGIN` | `https://exam-system-gamma-smoky.vercel.app` | Allowed frontend origin |
+| `ADMIN_EMAIL` | `controller@apex.edu` | Initial admin account |
+| `ADMIN_PASSWORD` | `AdminPassword123!` | Initial admin password |
 
-### 2. Deploying Backend to Render
-1. Connect your repository to [Render.com](https://render.com) as a **Web Service**.
-2. Set Root Directory to `backend` and Environment to **Docker**.
-3. Set environment variables: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
-
-### 3. Deploying Frontend to Vercel
-1. Import the repository into [Vercel.com](https://vercel.com).
-2. Framework Preset: **Vite** | Root Directory: `./`.
-3. Add Environment Variable:
-   ```env
-   VITE_API_URL=https://your-render-backend.onrender.com/api
-   ```
-4. Click **Deploy**.
+#### Frontend (Vercel):
+| Key | Example Value | Description |
+|---|---|---|
+| `VITE_API_URL` | `https://apex-exam-backend.onrender.com/api` | Backend API URL |
 
 ---
 
@@ -167,8 +165,9 @@ npm run seed:admin controller@apex.edu NewPassword123!
 ## 📡 API Reference Summary
 
 ### Authentication & Account
-* `POST /api/auth/login` — Authenticate planner and receive JWT.
-* `GET  /api/auth/me` — Retrieve current authenticated session.
+* `POST /api/auth/register` — Create a new planner ID.
+* `POST /api/auth/login` — Authenticate and receive JWT.
+* `GET  /api/auth/me` — Retrieve active session profile.
 * `PUT  /api/auth/profile` — Update planner name and email in MySQL database.
 * `PUT  /api/auth/change-password` — Change password with bcrypt hashing.
 

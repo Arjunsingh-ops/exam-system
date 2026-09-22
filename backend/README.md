@@ -91,14 +91,17 @@ docker build -t exam-backend .
 docker run -p 5000:5000 --env-file .env exam-backend
 ```
 
+> 🌐 **Live Web Application**: [https://exam-system-gamma-smoky.vercel.app](https://exam-system-gamma-smoky.vercel.app)
+
 ---
 
 ## 📡 Core API Endpoints
 
-### 🔐 Auth (`/api/auth`)
+### 🔐 Auth (`/api/auth` or `/auth`)
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/auth/login` | Authenticate administrator & get JWT token |
+| `POST` | `/api/auth/register` | Register a new planner ID & receive JWT token |
+| `POST` | `/api/auth/login` | Authenticate user & receive JWT token |
 | `GET`  | `/api/auth/me` | Fetch active planner profile |
 | `PUT`  | `/api/auth/profile` | Update planner name & email in MySQL database |
 | `PUT`  | `/api/auth/change-password` | Update planner password with bcrypt hashing |
