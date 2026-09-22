@@ -1,6 +1,18 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
+const sanitizeDbUri = (uri) => {
+  if (!uri) return uri;
+  try {
+    const parsed = new URL(uri);
+    parsed.searchParams.delete('ssl-mode');
+    parsed.searchParams.delete('sslmode');
+    return parsed.toString();
+  } catch {
+    return uri.replace(/[?&]ssl-mode=[^&]*/, '');
+  }
+};
+
 const getPoolConfig = () => {
   const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
   const isSsl = process.env.DB_SSL === 'true' || Boolean(dbUrl && (dbUrl.includes('ssl') || dbUrl.includes('aiven') || dbUrl.includes('railway') || dbUrl.includes('supabase') || dbUrl.includes('tidb')));
@@ -9,7 +21,7 @@ const getPoolConfig = () => {
 
   if (dbUrl) {
     return {
-      uri: dbUrl,
+      uri: sanitizeDbUri(dbUrl),
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,

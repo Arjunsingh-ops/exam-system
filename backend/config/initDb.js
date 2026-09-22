@@ -4,13 +4,26 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
+const sanitizeDbUri = (uri) => {
+  if (!uri) return uri;
+  try {
+    const parsed = new URL(uri);
+    parsed.searchParams.delete('ssl-mode');
+    parsed.searchParams.delete('sslmode');
+    return parsed.toString();
+  } catch {
+    return uri.replace(/[?&]ssl-mode=[^&]*/, '');
+  }
+};
+
 const initDatabase = async () => {
-  const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+  const rawDbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+  const dbUrl = sanitizeDbUri(rawDbUrl);
   const dbName = process.env.DB_NAME || 'exam_seating_system';
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@exam.edu').trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
   const adminName = process.env.ADMIN_NAME || 'Exam Controller / Administrator';
-  const isSsl = process.env.DB_SSL === 'true' || Boolean(dbUrl && (dbUrl.includes('ssl') || dbUrl.includes('aiven') || dbUrl.includes('railway') || dbUrl.includes('supabase') || dbUrl.includes('tidb')));
+  const isSsl = process.env.DB_SSL === 'true' || Boolean(rawDbUrl && (rawDbUrl.includes('ssl') || rawDbUrl.includes('aiven') || rawDbUrl.includes('railway') || rawDbUrl.includes('supabase') || rawDbUrl.includes('tidb')));
   const sslOption = isSsl ? { rejectUnauthorized: false } : undefined;
 
   let conn;
