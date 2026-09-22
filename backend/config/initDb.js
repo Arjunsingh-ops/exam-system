@@ -16,6 +16,28 @@ const sanitizeDbUri = (uri) => {
   }
 };
 
+const getSslOption = () => {
+  const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+  const isSsl = process.env.DB_SSL === 'true' || Boolean(dbUrl && (dbUrl.includes('ssl') || dbUrl.includes('aiven') || dbUrl.includes('railway') || dbUrl.includes('supabase') || dbUrl.includes('tidb')));
+
+  let caContent = process.env.DB_CA_CERT;
+  if (!caContent) {
+    const caPath = path.join(__dirname, '..', 'ca.pem');
+    if (fs.existsSync(caPath)) {
+      try { caContent = fs.readFileSync(caPath, 'utf8'); } catch (_) {}
+    }
+  }
+
+  if (caContent) {
+    return {
+      ca: caContent,
+      rejectUnauthorized: true,
+    };
+  }
+
+  return isSsl ? { rejectUnauthorized: false } : undefined;
+};
+
 const initDatabase = async () => {
   const rawDbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
   const dbUrl = sanitizeDbUri(rawDbUrl);
@@ -23,8 +45,7 @@ const initDatabase = async () => {
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@exam.edu').trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
   const adminName = process.env.ADMIN_NAME || 'Exam Controller / Administrator';
-  const isSsl = process.env.DB_SSL === 'true' || Boolean(rawDbUrl && (rawDbUrl.includes('ssl') || rawDbUrl.includes('aiven') || rawDbUrl.includes('railway') || rawDbUrl.includes('supabase') || rawDbUrl.includes('tidb')));
-  const sslOption = isSsl ? { rejectUnauthorized: false } : undefined;
+  const sslOption = getSslOption();
 
   let conn;
 

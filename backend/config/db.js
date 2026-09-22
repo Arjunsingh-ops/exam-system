@@ -13,11 +13,34 @@ const sanitizeDbUri = (uri) => {
   }
 };
 
-const getPoolConfig = () => {
+const fs = require('fs');
+const path = require('path');
+
+const getSslOption = () => {
   const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
   const isSsl = process.env.DB_SSL === 'true' || Boolean(dbUrl && (dbUrl.includes('ssl') || dbUrl.includes('aiven') || dbUrl.includes('railway') || dbUrl.includes('supabase') || dbUrl.includes('tidb')));
 
-  const sslOption = isSsl ? { rejectUnauthorized: false } : undefined;
+  let caContent = process.env.DB_CA_CERT;
+  if (!caContent) {
+    const caPath = path.join(__dirname, '..', 'ca.pem');
+    if (fs.existsSync(caPath)) {
+      try { caContent = fs.readFileSync(caPath, 'utf8'); } catch (_) {}
+    }
+  }
+
+  if (caContent) {
+    return {
+      ca: caContent,
+      rejectUnauthorized: true,
+    };
+  }
+
+  return isSsl ? { rejectUnauthorized: false } : undefined;
+};
+
+const getPoolConfig = () => {
+  const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+  const sslOption = getSslOption();
 
   if (dbUrl) {
     return {
