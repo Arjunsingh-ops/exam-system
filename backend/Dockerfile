@@ -1,13 +1,10 @@
 # Production Dockerfile for Apex University Examination Seating Backend
-FROM node:20-bullseye-slim
+FROM node:20-bookworm-slim
 
 # Install Chromium and system dependencies required for Puppeteer PDF rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
+    fonts-liberation \
     fonts-freefont-ttf \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
