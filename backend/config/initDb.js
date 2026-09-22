@@ -67,7 +67,7 @@ const initDatabase = async () => {
 
     // Query existing admin accounts from database
     const [existingAdmins] = await conn.query(
-      'SELECT id, email, password FROM users WHERE role = "admin"'
+      "SELECT id, email, password FROM users WHERE role = 'admin'"
     );
 
     const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
@@ -75,7 +75,7 @@ const initDatabase = async () => {
 
     if (existingAdmins.length === 0) {
       await conn.query(
-        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, "admin")',
+        "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'admin')",
         [adminName, adminEmail, hashedPassword]
       );
       console.log(`👤 Initial authorized administrator seeded into database: ${adminEmail}`);
@@ -95,7 +95,7 @@ const initDatabase = async () => {
 
       // Enforce single-admin policy: purge any extraneous admin records
       await conn.query(
-        'DELETE FROM users WHERE role = "admin" AND id != ?',
+        "DELETE FROM users WHERE role = 'admin' AND id != ?",
         [primaryAdmin.id]
       );
       console.log(`🔒 Enforced single admin database policy.`);

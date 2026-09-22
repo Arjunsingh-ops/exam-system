@@ -31,11 +31,11 @@ async function seedAdmin() {
     const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    const [existing] = await pool.query('SELECT id, email FROM users WHERE role = "admin"');
+    const [existing] = await pool.query("SELECT id, email FROM users WHERE role = 'admin'");
 
     if (existing.length === 0) {
       await pool.query(
-        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, "admin")',
+        "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'admin')",
         [name, email, hashedPassword]
       );
       console.log(`✅ Administrator account created successfully.`);
@@ -46,7 +46,7 @@ async function seedAdmin() {
         [name, email, hashedPassword, primaryId]
       );
       // Remove any extra admin accounts
-      await pool.query('DELETE FROM users WHERE role = "admin" AND id != ?', [primaryId]);
+      await pool.query("DELETE FROM users WHERE role = 'admin' AND id != ?", [primaryId]);
       console.log(`✅ Administrator credentials updated and single-admin policy enforced.`);
     }
 
