@@ -11,8 +11,16 @@ const authenticate = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    return res.status(401).json({ success: false, message: 'Invalid or expired session. Please log in again.' });
   }
 };
 
-module.exports = { authenticate };
+const authorizeAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Forbidden. Administrator privileges required.' });
+  }
+  next();
+};
+
+module.exports = { authenticate, authorizeAdmin };
+

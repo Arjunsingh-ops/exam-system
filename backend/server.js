@@ -18,18 +18,51 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: '*', credentials: true }));
+const allowedOrigin = process.env.CORS_ORIGIN || '*';
+app.use(cors({
+  origin: allowedOrigin === '*' ? '*' : allowedOrigin.split(','),
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) =>
-  res.json({ success: true, message: '🚀 Exam Seating API is running', timestamp: new Date() })
+  res.json({
+    success: true,
+    message: '🚀 University Exam Seating Management System API is running',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  })
 );
 
+// ─── Database Initialization Middleware ──────────────────────────────────────
+let isInitialized = false;
+let initPromise = null;
+
+app.use(async (req, res, next) => {
+  if (!isInitialized && req.path.startsWith('/api')) {
+    if (!initPromise) {
+      initPromise = initDatabase()
+        .then(() => {
+          isInitialized = true;
+        })
+        .catch((err) => {
+          console.error('Database initialization error:', err.message);
+          initPromise = null;
+        });
+    }
+    await initPromise;
+  }
+  next();
+});
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
+const adminRoutes = require('./routes/adminRoutes');
 app.use('/api/auth',     authRoutes);
+app.use('/api/admin',    adminRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/rooms',    roomRoutes);
 app.use('/api/exams',    examRoutes);
@@ -55,8 +88,15 @@ const start = async () => {
     });
   } catch (err) {
     console.error('💥 Startup failed:', err.message);
-    process.exit(1);
+    console.error('Full error:', err);
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
 
-start();
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  start();
+}
+
+module.exports = app;

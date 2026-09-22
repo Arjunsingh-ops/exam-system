@@ -1,12 +1,18 @@
 import axios from 'axios';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const BASE = import.meta.env.VITE_API_URL || '/api';
 
-const api = axios.create({ baseURL: BASE, headers: { 'Content-Type': 'application/json' } });
+const api = axios.create({
+  baseURL: BASE,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
+});
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -16,15 +22,23 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err);
   }
 );
 
 export const authAPI = {
-  login: (data) => api.post('/auth/login', data),
-  me:    ()     => api.get('/auth/me'),
+  login:          (data) => api.post('/auth/login', data),
+  me:             ()     => api.get('/auth/me'),
+  updateProfile:  (data) => api.put('/auth/profile', data),
+  changePassword: (data) => api.put('/auth/change-password', data),
+};
+
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
 };
 
 export const studentAPI = {
@@ -68,21 +82,40 @@ export const seatingAPI = {
   clearExam: (eid)    => api.delete(`/seating/exam/${eid}`),
 };
 
-export const downloadSeatingPDF = async (exam_id) => {
+export const downloadSeatingPDF = async (exam_id, examTitle = '') => {
+  const token = localStorage.getItem('token');
   const response = await fetch(`${BASE}/seating/pdf?exam_id=${exam_id}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
   });
+
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || 'PDF download failed');
+    let errorMsg = 'Failed to generate seating plan PDF';
+    try {
+      const errJson = await response.json();
+      if (errJson.message) errorMsg = errJson.message;
+    } catch {
+      // response wasn't JSON
+    }
+    throw new Error(errorMsg);
   }
+
   const blob = await response.blob();
   const cd = response.headers.get('content-disposition') || '';
-  const filename = cd.match(/filename="(.+?)"/)?.[1] || `SeatingPlan_Exam${exam_id}.pdf`;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  const match = cd.match(/filename="?([^";]+)"?/i);
+  const cleanTitle = (examTitle || 'Exam').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = match ? match[1] : `Exam-Seating-Plan-${cleanTitle}.pdf`;
+
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 export default api;
+

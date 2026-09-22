@@ -19,7 +19,7 @@ const deleteSeat = async (req, res, next) => {
   try {
     const affected = await SeatingModel.deleteById(req.params.id);
     if (!affected) return res.status(404).json({ success: false, message: 'Record not found.' });
-    res.json({ success: true, message: 'Seating record deleted.' });
+    res.json({ success: true, message: 'Seating record deleted successfully.' });
   } catch (err) { next(err); }
 };
 
@@ -27,7 +27,7 @@ const deleteSeat = async (req, res, next) => {
 const clearSeatingForExam = async (req, res, next) => {
   try {
     const count = await SeatingModel.deleteByExam(req.params.exam_id);
-    res.json({ success: true, message: `Cleared ${count} seating records.` });
+    res.json({ success: true, message: `Cleared ${count} seating record(s) for this exam.` });
   } catch (err) { next(err); }
 };
 
@@ -35,112 +35,120 @@ const clearSeatingForExam = async (req, res, next) => {
 /**
  * Body: { exam_id, room_ids: [1,2,3], teacher_ids: [1,2,3] }
  *
- * Algorithm (Column-based multi-program interleaving):
- * 1. Fetch exam → get programs (comma-separated) + semester
- * 2. Fetch students matching ANY of the exam's programs + semester
- * 3. Group students by program
- * 4. Fill grid COLUMN-BY-COLUMN: each column cycles through program groups
- *    so that same-program students sit behind each other (vertically)
- *    but adjacent columns have different programs (horizontally)
- * 5. This ensures:
- *    - Students from DIFFERENT programs sit next to each other in a row
- *    - Students from the SAME program sit in the same column (behind each other)
- *    - Columns alternate between programs
+ * Algorithm (Column-based multi-program anti-conflict interleaving):
+ * 1. Fetch and validate exam, programs and semester
+ * 2. Fetch all eligible students matching any of the exam programs and semester
+ * 3. Validate selected rooms and compute combined seating capacity
+ * 4. Verify capacity is sufficient
+ * 5. Run atomic database transaction to clear existing plan and insert new assignments
+ * 6. Return comprehensive summary
  */
 const generateSeating = async (req, res, next) => {
+  let connection;
   try {
     const { exam_id, room_ids, teacher_ids = [] } = req.body;
 
-    if (!exam_id) return res.status(400).json({ success: false, message: 'exam_id is required.' });
-    if (!room_ids?.length) return res.status(400).json({ success: false, message: 'At least one room is required.' });
-
-    const exam = await ExamModel.getById(exam_id);
-    if (!exam) return res.status(404).json({ success: false, message: 'Exam not found.' });
-
-    // Parse programs (comma-separated)
-    const programList = exam.programs.split(',').map(p => p.trim()).filter(Boolean);
-    if (!programList.length) {
-      return res.status(400).json({ success: false, message: 'No programs defined for this exam.' });
+    if (!exam_id) {
+      return res.status(400).json({ success: false, message: 'Exam ID is required.' });
+    }
+    if (!room_ids || !Array.isArray(room_ids) || room_ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one room for seating allocation.' });
     }
 
-    // Fetch students matching any of the exam's programs + semester
+    const exam = await ExamModel.getById(exam_id);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Target exam not found.' });
+    }
+
+    // Parse programs
+    const programList = exam.programs
+      ? exam.programs.split(',').map(p => p.trim()).filter(Boolean)
+      : [];
+
+    if (!programList.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No academic programs are configured for this examination.'
+      });
+    }
+
+    // Fetch students matching exam programs and semester
     const placeholders = programList.map(() => '?').join(',');
     const [students] = await pool.query(
-      `SELECT id, name, roll_no, program, specialization, year, semester 
-       FROM students WHERE program IN (${placeholders}) AND semester = ? 
+      `SELECT id, name, roll_no, enrollment_no, program, specialization, year, semester 
+       FROM students 
+       WHERE program IN (${placeholders}) AND semester = ? 
        ORDER BY program, specialization, roll_no`,
       [...programList, exam.semester]
     );
 
-    if (!students.length) {
+    if (!students || students.length === 0) {
       return res.status(400).json({
         success: false,
-        message: `No students found for Programs: "${programList.join(', ')}", Semester: ${exam.semester}. Please upload student data first.`,
+        message: `No students found enrolled in [${programList.join(', ')}] for Semester ${exam.semester}. Please import student records in the registry first.`
       });
     }
 
-    // Fetch and validate rooms
+    // Fetch and validate selected rooms
     const rooms = [];
     for (const rid of room_ids) {
       const room = await RoomModel.getById(rid);
-      if (!room) return res.status(404).json({ success: false, message: `Room ID ${rid} not found.` });
+      if (!room) {
+        return res.status(404).json({ success: false, message: `Room ID ${rid} does not exist.` });
+      }
       rooms.push(room);
     }
 
-    const totalCapacity = rooms.reduce((sum, r) => sum + r.capacity, 0);
+    const totalCapacity = rooms.reduce((sum, r) => sum + (parseInt(r.capacity, 10) || 0), 0);
     if (students.length > totalCapacity) {
       return res.status(400).json({
         success: false,
-        message: `Insufficient capacity. Students: ${students.length}, Total seats: ${totalCapacity}. Add more rooms.`,
+        message: `Insufficient room capacity: ${students.length} students require seats, but selected room(s) only provide ${totalCapacity} seats. Please add more rooms (shortage: ${students.length - totalCapacity} seats).`
       });
     }
 
-    // Fetch teachers if provided
+    // Fetch teachers/invigilators
     const teachers = [];
-    for (const tid of teacher_ids) {
-      const t = await TeacherModel.getById(tid);
-      if (t) teachers.push(t);
+    if (Array.isArray(teacher_ids)) {
+      for (const tid of teacher_ids) {
+        const t = await TeacherModel.getById(tid);
+        if (t) teachers.push(t);
+      }
     }
 
-    // ── Group students by program ─────────────────────────────────────────────
+    // Group students by program for anti-conflict interleaving
     const programMap = {};
     for (const s of students) {
       const key = s.program || 'General';
       if (!programMap[key]) programMap[key] = [];
       programMap[key].push(s);
     }
+
     const programKeys = Object.keys(programMap);
-    // Sort programs by size (largest first) for better distribution
+    // Sort descending by count so larger cohorts interleave nicely
     programKeys.sort((a, b) => programMap[b].length - programMap[a].length);
 
-    // ── Clear old seating for this exam ───────────────────────────────────────
-    await SeatingModel.deleteByExam(exam_id);
-
-    // ── Assign seats room by room using column-based interleaving ─────────────
-    const seatingRecords = [];
-    let globalProgramOffset = 0; // tracks which program starts each room
-    
-    // Create a flat queue of students per program for sequential consumption
     const programQueues = {};
     for (const key of programKeys) {
       programQueues[key] = [...programMap[key]];
     }
 
+    const seatingRecords = [];
+    let globalProgramOffset = 0;
+
     for (let ri = 0; ri < rooms.length; ri++) {
       const room = rooms[ri];
       const teacher = teachers.length > 0 ? teachers[ri % teachers.length] : null;
-      const rows = room.rows_count || Math.ceil(Math.sqrt(room.capacity));
-      const cols = room.cols_count || Math.ceil(room.capacity / rows);
-
+      const rows = room.rows_count || Math.ceil(Math.sqrt(room.capacity)) || 5;
+      const cols = room.cols_count || Math.ceil(room.capacity / rows) || 6;
       let seatNum = 0;
+
       const allExhausted = () => programKeys.every(k => programQueues[k].length === 0);
 
-      // Fill column-by-column
+      // Fill column by column to ensure adjacent seats in rows have different programs
       for (let c = 1; c <= cols; c++) {
         if (allExhausted()) break;
 
-        // Each column is assigned a starting program (offset by column index)
-        // This ensures adjacent columns start with different programs
         const colProgramIndex = (c - 1 + globalProgramOffset) % programKeys.length;
 
         for (let r = 1; r <= rows; r++) {
@@ -148,30 +156,25 @@ const generateSeating = async (req, res, next) => {
           seatNum++;
           if (seatNum > room.capacity) break;
 
-          // For each row in a column, pick the next student from the assigned program
-          // The program for this row alternates: row 1 = programA, row 2 = programB, etc.
-          // But the starting program for each column is offset
           const rowProgramIndex = (colProgramIndex + (r - 1)) % programKeys.length;
-          
-          // Try to find a student from the target program
           let student = null;
-          let triedPrograms = 0;
-          let tryIndex = rowProgramIndex;
-          
-          while (triedPrograms < programKeys.length) {
-            const targetProgram = programKeys[tryIndex % programKeys.length];
-            if (programQueues[targetProgram].length > 0) {
-              student = programQueues[targetProgram].shift();
+          let tried = 0;
+          let tryIdx = rowProgramIndex;
+
+          while (tried < programKeys.length) {
+            const candidateProgram = programKeys[tryIdx % programKeys.length];
+            if (programQueues[candidateProgram].length > 0) {
+              student = programQueues[candidateProgram].shift();
               break;
             }
-            tryIndex++;
-            triedPrograms++;
+            tryIdx++;
+            tried++;
           }
 
-          if (!student) break; // All programs exhausted
+          if (!student) break;
 
           seatingRecords.push({
-            exam_id,
+            exam_id: exam.id,
             student_id: student.id,
             room_id: room.id,
             teacher_id: teacher ? teacher.id : null,
@@ -180,39 +183,62 @@ const generateSeating = async (req, res, next) => {
         }
       }
 
-      globalProgramOffset += 1; // Next room starts with a different program offset
-      if (programKeys.every(k => programQueues[k].length === 0)) break;
+      globalProgramOffset++;
+      if (allExhausted()) break;
     }
 
-    await SeatingModel.bulkInsert(seatingRecords);
+    // Execute atomic transaction for safe persistence
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await SeatingModel.deleteByExam(exam_id, connection);
+    await SeatingModel.bulkInsert(seatingRecords, connection);
+
+    await connection.commit();
+
     const generated = await SeatingModel.getAll({ exam_id });
 
     res.status(201).json({
       success: true,
-      message: `Seating plan generated for ${seatingRecords.length} students across ${rooms.length} room(s).`,
+      message: `Successfully generated seating plan for ${seatingRecords.length} student(s) across ${rooms.length} room(s).`,
       exam,
       total_students: seatingRecords.length,
       rooms_used: rooms.length,
       seating: generated,
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (connection) {
+      try { await connection.rollback(); } catch (_) {}
+    }
+    next(err);
+  } finally {
+    if (connection) connection.release();
+  }
 };
 
 // ─── GET /api/seating/pdf?exam_id= ───────────────────────────────────────────
 const downloadPDF = async (req, res, next) => {
+  let browser = null;
   try {
     const { exam_id } = req.query;
-    if (!exam_id) return res.status(400).json({ success: false, message: 'exam_id is required.' });
-
-    const exam = await ExamModel.getById(exam_id);
-    if (!exam) return res.status(404).json({ success: false, message: 'Exam not found.' });
-
-    const records = await SeatingModel.getAll({ exam_id });
-    if (!records.length) {
-      return res.status(404).json({ success: false, message: 'No seating plan found. Generate first.' });
+    if (!exam_id) {
+      return res.status(400).json({ success: false, message: 'Exam ID is required.' });
     }
 
-    // Group by room
+    const exam = await ExamModel.getById(exam_id);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Target exam not found.' });
+    }
+
+    const records = await SeatingModel.getAll({ exam_id });
+    if (!records || records.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No seating plan records found. Please generate the seating plan first.'
+      });
+    }
+
+    // Group seating records by room
     const roomMap = {};
     for (const r of records) {
       if (!roomMap[r.room_no]) {
@@ -220,6 +246,7 @@ const downloadPDF = async (req, res, next) => {
           room_no: r.room_no,
           floor: r.floor,
           block: r.block,
+          capacity: r.room_capacity,
           teacher_name: r.teacher_name,
           teacher_dept: r.teacher_dept,
           seats: [],
@@ -229,176 +256,412 @@ const downloadPDF = async (req, res, next) => {
     }
 
     const examDate = exam.exam_date
-      ? new Date(exam.exam_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
-      : '—';
+      ? new Date(exam.exam_date).toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'long', year: 'numeric' })
+      : 'Scheduled';
 
-    const examTypeBadgeColor = {
-      'End Sem': '#059669',
-      'Mid Sem': '#2563eb',
-      'Back Exam': '#dc2626',
-    }[exam.exam_type] || '#6b7280';
+    const safeExamTitle = (exam.title || 'Exam').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const dateStamp = exam.exam_date ? new Date(exam.exam_date).toISOString().split('T')[0] : 'Date';
+    const filename = `Exam-Seating-Plan-${safeExamTitle}-${dateStamp}.pdf`;
 
-    // Parse programs for display
-    const programList = exam.programs.split(',').map(p => p.trim()).filter(Boolean);
+    const programList = exam.programs
+      ? exam.programs.split(',').map(p => p.trim()).filter(Boolean)
+      : [];
 
-    const roomSections = Object.values(roomMap).map(room => `
-      <div class="room-section">
-        <div class="room-header">
-          <div class="room-title">
-            <span class="room-icon">🏫</span>
-            <div>
-              <h3>Room: ${room.room_no}</h3>
-              <span class="room-meta">${[room.block ? 'Block ' + room.block : '', room.floor ? 'Floor ' + room.floor : ''].filter(Boolean).join(' • ')}</span>
+    const roomEntries = Object.values(roomMap);
+
+    const roomPagesHtml = roomEntries.map((room, roomIdx) => {
+      return `
+      <div class="room-sheet ${roomIdx > 0 ? 'page-break' : ''}">
+        <!-- University & Exam Header -->
+        <header class="doc-header">
+          <div class="uni-brand">
+            <div class="uni-emblem">🏛️</div>
+            <div class="uni-text">
+              <h1 class="uni-name">APEX UNIVERSITY</h1>
+              <p class="uni-dept">OFFICE OF THE CONTROLLER OF EXAMINATIONS</p>
             </div>
           </div>
-          <div class="invigilator-tag">
-            <span style="opacity:0.7">Invigilator:</span>
-            <strong>${room.teacher_name || '—'}</strong>
-            ${room.teacher_dept ? `<span style="opacity:0.7">(${room.teacher_dept})</span>` : ''}
+          <div class="doc-badge-wrap">
+            <span class="exam-type-tag">${exam.exam_type}</span>
+          </div>
+        </header>
+
+        <div class="exam-title-bar">
+          <h2>EXAMINATION SEATING & HALL ALLOCATION PLAN</h2>
+        </div>
+
+        <div class="exam-details-grid">
+          <div class="detail-item"><span class="label">Course Name:</span> <span class="val bold">${exam.course_name}</span></div>
+          <div class="detail-item"><span class="label">Course Code:</span> <span class="val font-mono">${exam.course_code || '—'}</span></div>
+          <div class="detail-item"><span class="label">Exam Date:</span> <span class="val">${examDate}</span></div>
+          <div class="detail-item"><span class="label">Timing:</span> <span class="val">${exam.start_time || '—'} to ${exam.end_time || '—'}</span></div>
+          <div class="detail-item"><span class="label">Programs:</span> <span class="val">${programList.join(', ') || 'All'}</span></div>
+          <div class="detail-item"><span class="label">Semester:</span> <span class="val">Semester ${exam.semester}</span></div>
+        </div>
+
+        <!-- Room Meta Bar -->
+        <div class="room-meta-banner">
+          <div class="room-ident">
+            <span class="room-icon">🚪</span>
+            <span class="room-title">ROOM NO: ${room.room_no}</span>
+            <span class="room-location">(${[room.block ? 'Block ' + room.block : '', room.floor ? 'Floor ' + room.floor : ''].filter(Boolean).join(', ') || 'Main Campus'})</span>
+          </div>
+          <div class="room-stats">
+            <span>Room Capacity: <strong>${room.capacity || room.seats.length}</strong></span>
+            <span>Allocated: <strong>${room.seats.length} Students</strong></span>
           </div>
         </div>
-        <table>
+
+        <div class="invigilator-strip">
+          <span>Assigned Invigilator: <strong>${room.teacher_name || 'Unassigned / Faculty on Duty'}</strong> ${room.teacher_dept ? '(' + room.teacher_dept + ')' : ''}</span>
+          <span>Room Sign-off: _______________________</span>
+        </div>
+
+        <!-- Student Seating Table -->
+        <table class="seating-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Seat No</th>
-              <th>Student Name</th>
-              <th>Roll No</th>
-              <th>Program</th>
-              <th>Specialization</th>
-              <th>Year</th>
+              <th style="width: 45px; text-align: center;">S.NO</th>
+              <th style="width: 80px; text-align: center;">SEAT NO</th>
+              <th style="width: 220px;">STUDENT NAME</th>
+              <th style="width: 110px;">ROLL NUMBER</th>
+              <th style="width: 110px;">ENROLLMENT NO</th>
+              <th style="width: 100px;">PROGRAM</th>
+              <th style="width: 110px; text-align: center;">SIGNATURE</th>
             </tr>
           </thead>
           <tbody>
-            ${room.seats.map((s, i) => `
-              <tr class="${i % 2 === 0 ? 'even' : 'odd'}">
-                <td>${i + 1}</td>
-                <td><span class="seat-badge">${s.seat_no}</span></td>
-                <td class="bold">${s.student_name}</td>
-                <td>${s.roll_no}</td>
-                <td><span class="program-badge">${s.program}</span></td>
-                <td>${s.specialization || '—'}</td>
-                <td>${s.year || '—'}</td>
-              </tr>`).join('')}
+            ${room.seats.map((seat, sIdx) => `
+              <tr class="${sIdx % 2 === 0 ? 'even' : 'odd'}">
+                <td style="text-align: center; font-weight: 500;">${sIdx + 1}</td>
+                <td style="text-align: center;"><span class="seat-badge">${seat.seat_no}</span></td>
+                <td class="student-name">${seat.student_name}</td>
+                <td class="font-mono">${seat.roll_no}</td>
+                <td class="font-mono text-muted">${seat.enrollment_no || '—'}</td>
+                <td><span class="prog-tag">${seat.program}</span></td>
+                <td class="signature-cell"></td>
+              </tr>
+            `).join('')}
           </tbody>
         </table>
-        <div class="room-footer">Total students in this room: <strong>${room.seats.length}</strong></div>
+
+        <!-- Hall Summary Footer -->
+        <div class="room-summary-footer">
+          <div>Report Generated: ${new Date().toLocaleString('en-US')}</div>
+          <div>Total Students in Room ${room.room_no}: <strong>${room.seats.length}</strong></div>
+        </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
 
-    const departments = [...new Set(records.map(r => r.specialization).filter(Boolean))];
-
-    const html = `<!DOCTYPE html>
+    const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <title>${exam.title} — Seating Plan</title>
+  <meta charset="UTF-8" />
+  <title>${filename}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111827; background: #fff; font-size: 12px; }
-
-    .page-header { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%); color: white; padding: 28px 36px; }
-    .institute { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; margin-bottom: 6px; }
-    .exam-title { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
-    .exam-meta { display: flex; flex-wrap: wrap; gap: 20px; font-size: 11px; opacity: 0.9; }
-    .exam-meta span { display: flex; align-items: center; gap: 5px; }
-    .exam-type-badge { 
-      display: inline-block; padding: 3px 10px; border-radius: 99px; 
-      background: ${examTypeBadgeColor}; color: white; font-size: 11px; font-weight: 600;
-      margin-left: 8px; vertical-align: middle;
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm 14mm 12mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 11px;
+      line-height: 1.35;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+    }
+    .room-sheet {
+      padding-top: 4px;
     }
 
-    .stats-bar { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; }
-    .stat { flex: 1; padding: 16px 20px; text-align: center; border-right: 1px solid #e5e7eb; }
-    .stat:last-child { border-right: none; }
-    .stat-num { font-size: 26px; font-weight: 700; color: #4338ca; }
-    .stat-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+    /* Header */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #1e293b;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
+    .uni-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .uni-emblem {
+      font-size: 26px;
+    }
+    .uni-name {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #0f172a;
+    }
+    .uni-dept {
+      font-size: 8.5px;
+      letter-spacing: 1px;
+      color: #475569;
+      font-weight: 600;
+      margin-top: 1px;
+    }
+    .exam-type-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: #1e1b4b;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
 
-    .content { padding: 24px 36px; }
+    .exam-title-bar {
+      text-align: center;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .exam-title-bar h2 {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      color: #1e293b;
+    }
 
-    .room-section { margin-bottom: 32px; page-break-inside: avoid; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-    .room-header { background: #f8fafc; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; }
-    .room-title { display: flex; align-items: center; gap: 12px; }
-    .room-icon { font-size: 20px; }
-    .room-title h3 { font-size: 15px; font-weight: 700; color: #1e1b4b; }
-    .room-meta { font-size: 11px; color: #6b7280; }
-    .invigilator-tag { font-size: 11px; color: #374151; background: #ede9fe; padding: 6px 14px; border-radius: 6px; }
-    .invigilator-tag strong { color: #4338ca; }
+    /* Exam Details */
+    .exam-details-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 5px 16px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .detail-item {
+      display: flex;
+      font-size: 10px;
+    }
+    .detail-item .label {
+      width: 90px;
+      color: #64748b;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .detail-item .val {
+      color: #0f172a;
+    }
+    .bold { font-weight: 700; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 9.5px; }
 
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    thead tr { background: #4338ca; color: white; }
-    th { padding: 9px 14px; text-align: left; font-weight: 600; letter-spacing: 0.5px; }
-    td { padding: 8px 14px; }
-    tr.even { background: #fff; }
-    tr.odd { background: #f9fafb; }
-    td.bold { font-weight: 600; }
-    .seat-badge { background: #ede9fe; color: #4338ca; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
-    .program-badge { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    /* Room Meta */
+    .room-meta-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1e293b;
+      color: #ffffff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+    .room-ident {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .room-title {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .room-location {
+      font-size: 10px;
+      color: #cbd5e1;
+    }
+    .room-stats {
+      font-size: 10px;
+      display: flex;
+      gap: 14px;
+      color: #e2e8f0;
+    }
 
-    .room-footer { padding: 10px 20px; font-size: 11px; color: #6b7280; background: #f8fafc; border-top: 1px solid #e5e7eb; text-align: right; }
+    .invigilator-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      color: #334155;
+    }
 
-    .page-footer { text-align: center; font-size: 10px; color: #9ca3af; padding: 16px 36px; border-top: 1px solid #e5e7eb; margin-top: 8px; }
+    /* Table */
+    table.seating-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    table.seating-table thead {
+      display: table-header-group;
+    }
+    table.seating-table th {
+      background: #334155;
+      color: #ffffff;
+      font-weight: 700;
+      padding: 6px 8px;
+      border: 1px solid #1e293b;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    table.seating-table tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    table.seating-table td {
+      padding: 5px 8px;
+      border: 1px solid #cbd5e1;
+      vertical-align: middle;
+      word-break: break-word;
+    }
+    tr.even { background: #ffffff; }
+    tr.odd  { background: #f8fafc; }
+    .seat-badge {
+      display: inline-block;
+      background: #ede9fe;
+      color: #4338ca;
+      font-weight: 700;
+      font-family: monospace;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 9.5px;
+      border: 1px solid #c7d2fe;
+    }
+    .prog-tag {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .student-name {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .signature-cell {
+      border-bottom: 1px dotted #94a3b8 !important;
+    }
+    .text-muted { color: #64748b; }
 
-    @media print { .room-section { page-break-inside: avoid; } }
+    .room-summary-footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 9px;
+      color: #64748b;
+    }
   </style>
 </head>
 <body>
-  <div class="page-header">
-    <div class="institute">Exam Seating Management System</div>
-    <div class="exam-title">
-      ${exam.title}
-      <span class="exam-type-badge">${exam.exam_type}</span>
-    </div>
-    <div class="exam-meta">
-      <span>📅 Date: <strong>${examDate}</strong></span>
-      <span>⏰ Time: <strong>${exam.start_time} – ${exam.end_time}</strong></span>
-      <span>📚 Course: <strong>${exam.course_name}${exam.course_code ? ' (' + exam.course_code + ')' : ''}</strong></span>
-      <span>🎓 Programs: <strong>${programList.join(', ')}</strong></span>
-      <span>📖 Semester: <strong>Sem ${exam.semester}</strong></span>
-    </div>
-  </div>
-
-  <div class="stats-bar">
-    <div class="stat"><div class="stat-num">${records.length}</div><div class="stat-label">Total Students</div></div>
-    <div class="stat"><div class="stat-num">${Object.keys(roomMap).length}</div><div class="stat-label">Rooms Used</div></div>
-    <div class="stat"><div class="stat-num">${programList.length}</div><div class="stat-label">Programs</div></div>
-    <div class="stat"><div class="stat-num">${departments.length}</div><div class="stat-label">Specializations</div></div>
-    <div class="stat"><div class="stat-num">${exam.semester}</div><div class="stat-label">Semester</div></div>
-  </div>
-
-  <div class="content">
-    ${roomSections}
-  </div>
-
-  <div class="page-footer">
-    Generated on ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; Exam Seating Automation System
-  </div>
+  ${roomPagesHtml}
 </body>
 </html>`;
 
-    const browser = await puppeteer.launch({
+    // Launch Puppeteer with production-safe arguments
+    const puppeteerArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ];
+
+    const launchOptions = {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+      args: puppeteerArgs,
+    };
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    await page.setContent(fullHtml, {
+      waitUntil: 'load',
+      timeout: 30000,
+    });
+
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      margin: {
+        top: '10mm',
+        bottom: '12mm',
+        left: '10mm',
+        right: '10mm',
+      },
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: `
+        <div style="font-size: 8px; font-family: sans-serif; width: 100%; display: flex; justify-content: space-between; padding: 0 12mm; color: #94a3b8;">
+          <span>Apex University Examination Management System • Confidential</span>
+          <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+        </div>
+      `,
     });
-    await browser.close();
 
-    const safeTitle = exam.title.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
-    const filename = `SeatingPlan_${safeTitle}_Sem${exam.semester}.pdf`;
+    await browser.close();
+    browser = null;
 
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Length': pdfBuffer.length,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
     });
-    res.end(pdfBuffer);
-  } catch (err) { next(err); }
+
+    return res.end(pdfBuffer);
+  } catch (err) {
+    console.error('❌ PDF Generation Error:', err);
+    if (browser) {
+      try { await browser.close(); } catch (_) {}
+    }
+    return res.status(500).json({
+      success: false,
+      message: `Failed to compile PDF: ${err.message || 'Chromium execution error'}. You may also use the Print Seating Plan option.`,
+    });
+  }
 };
 
-module.exports = { getSeating, generateSeating, deleteSeat, clearSeatingForExam, downloadPDF };
+module.exports = {
+  getSeating,
+  generateSeating,
+  deleteSeat,
+  clearSeatingForExam,
+  downloadPDF,
+};
