@@ -277,8 +277,8 @@ const downloadPDF = async (req, res, next) => {
           <div class="uni-brand">
             <div class="uni-emblem">🏛️</div>
             <div class="uni-text">
-              <h1 class="uni-name">APEX UNIVERSITY</h1>
-              <p class="uni-dept">OFFICE OF THE CONTROLLER OF EXAMINATIONS</p>
+              <h1 class="uni-name">APEX EXAM SITTING PLANNER</h1>
+              <p class="uni-dept">EXAMINATION SEATING & HALL ALLOCATION</p>
             </div>
           </div>
           <div class="doc-badge-wrap">
@@ -629,7 +629,7 @@ const downloadPDF = async (req, res, next) => {
       headerTemplate: '<div></div>',
       footerTemplate: `
         <div style="font-size: 8px; font-family: sans-serif; width: 100%; display: flex; justify-content: space-between; padding: 0 12mm; color: #94a3b8;">
-          <span>Apex University Examination Management System • Confidential</span>
+          <span>Apex Exam Sitting Planner • Confidential</span>
           <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
         </div>
       `,

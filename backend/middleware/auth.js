@@ -16,8 +16,8 @@ const authenticate = (req, res, next) => {
 };
 
 const authorizeAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Forbidden. Administrator privileges required.' });
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'planner')) {
+    return res.status(403).json({ success: false, message: 'Forbidden. Planner or administrator privileges required.' });
   }
   next();
 };

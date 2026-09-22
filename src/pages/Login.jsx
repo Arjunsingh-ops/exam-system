@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogIn, Eye, EyeOff, Loader2, ShieldCheck, Lock } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { LogIn, Eye, EyeOff, Loader2, ShieldCheck, Lock, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authAPI } from '../services/api';
 
@@ -30,7 +30,7 @@ export function Login() {
       const res = await authAPI.login(form);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
-      toast.success(`Welcome back, ${res.data.user.name || 'Administrator'}!`);
+      toast.success(`Welcome back, ${res.data.user.name || 'Planner'}!`);
       navigate('/admin');
     } catch (err) {
       const msg = err.response?.data?.message || 'Authentication failed. Please verify credentials.';
@@ -47,19 +47,19 @@ export function Login() {
       <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-blue-900/20 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md card-glass p-8 sm:p-10 relative z-10 border border-slate-700/60 shadow-2xl">
-        {/* University Crest & Branding */}
+        {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-900 border border-indigo-400/40 flex items-center justify-center text-3xl shadow-xl shadow-indigo-600/30 mb-4">
             🏛️
           </div>
-          <h1 className="text-xl font-extrabold text-white tracking-wide">
-            APEX UNIVERSITY
+          <h1 className="text-xl font-extrabold text-white tracking-wide uppercase">
+            Apex Exam Sitting Planner
           </h1>
           <p className="text-xs font-semibold text-indigo-400 uppercase tracking-widest mt-1">
-            Office of the Controller of Examinations
+            Examination Seating & Hall Allocation Portal
           </p>
           <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-800/80 text-slate-300 border border-slate-700">
-            <Lock size={12} className="text-amber-400" /> Authorized Exam Planner Access
+            <Lock size={12} className="text-amber-400" /> Authorized Planner Access
           </div>
         </div>
 
@@ -72,7 +72,7 @@ export function Login() {
               type="email"
               value={form.email}
               onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-              placeholder="e.g. controller@apex.edu"
+              placeholder="e.g. planner@apex.edu"
               autoComplete="username"
               autoFocus
               required
@@ -112,13 +112,19 @@ export function Login() {
           </button>
         </form>
 
+        {/* Create ID / Register Link */}
+        <div className="mt-5 pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400">
+          Want to plan exam seating?{' '}
+          <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1 transition-colors">
+            <UserPlus size={13} /> Create Planner ID
+          </Link>
+        </div>
+
         {/* Security & Access Notice */}
-        <div className="mt-6 pt-5 border-t border-slate-800/80">
-          <div className="p-3.5 rounded-lg bg-indigo-950/40 border border-indigo-800/30 flex items-start gap-2.5 text-xs text-slate-400">
-            <ShieldCheck size={16} className="text-indigo-400 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-slate-200">Single Planner Security Model:</span> Registration is restricted. Access is granted exclusively to the authorized University Exam Controller account.
-            </div>
+        <div className="mt-4 pt-3">
+          <div className="p-3 rounded-lg bg-indigo-950/40 border border-indigo-800/30 flex items-center justify-center gap-2 text-xs text-slate-400 text-center">
+            <ShieldCheck size={16} className="text-indigo-400 shrink-0" />
+            <span>Secure password encryption with instant cloud database sync</span>
           </div>
         </div>
       </div>

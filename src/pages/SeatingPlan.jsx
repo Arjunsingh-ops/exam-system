@@ -816,9 +816,9 @@ export function SeatingPlan() {
               {/* Header */}
               <div className="border-b-2 border-slate-900 pb-2 mb-3 flex justify-between items-center">
                 <div>
-                  <h1 className="text-base font-extrabold tracking-wider text-slate-900">APEX UNIVERSITY</h1>
+                  <h1 className="text-base font-extrabold tracking-wider text-slate-900">APEX EXAM SITTING PLANNER</h1>
                   <p className="text-[9px] font-bold tracking-widest text-slate-600 uppercase">
-                    Office of the Controller of Examinations
+                    Examination Seating & Hall Allocation
                   </p>
                 </div>
                 <div className="text-right">
@@ -886,7 +886,7 @@ export function SeatingPlan() {
               </table>
 
               <div className="flex justify-between items-center text-[8px] text-slate-500 mt-2 pt-1 border-t border-slate-200">
-                <span>Apex University Examination Management System • Confidential</span>
+                <span>Apex Exam Sitting Planner • Confidential</span>
                 <span>Page {roomIdx + 1} of {previewData.length}</span>
               </div>
             </div>

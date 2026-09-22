@@ -1,6 +1,6 @@
-# 🏛️ Apex University Exam Seating System — Backend API
+# 🏛️ Apex Exam Sitting Planner — Backend API
 
-Production REST API and headless PDF generation service for the Examination Seating Management System.
+Production REST API and headless PDF generation service for the Apex Exam Sitting Planner platform.
 
 ---
 

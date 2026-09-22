@@ -1,6 +1,6 @@
-# 🏛️ Apex University — Examination Seating Management System
+# 🏛️ Apex Exam Sitting Planner
 
-A production-grade, full-stack university examination seating and hall management platform. Built to automate conflict-free student seat distribution, provide real-time seating matrix visualizations, enforce strict academic single-planner security, and produce multi-room A4 print-ready PDF rosters.
+A production-grade, full-stack examination seating and hall planning platform. Built to automate conflict-free student seat distribution, provide real-time seating matrix visualizations, allow planners to create accounts and manage examinations, and produce multi-room A4 print-ready PDF rosters.
 
 [![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)

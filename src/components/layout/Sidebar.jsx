@@ -57,15 +57,15 @@ export function Sidebar() {
           lg:translate-x-0 lg:static lg:z-auto
         `}
       >
-        {/* University Brand Header */}
+        {/* Brand Header */}
         <div className="p-5 border-b border-custom bg-[#090d17]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 border border-indigo-400/30 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-indigo-500/25">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 border border-indigo-400/30 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-indigo-500/25 shrink-0">
               🏛️
             </div>
             <div className="min-w-0">
-              <h2 className="font-bold text-sm text-white tracking-wide truncate">APEX UNIVERSITY</h2>
-              <p className="text-[11px] text-indigo-400 font-medium tracking-wider uppercase">Exam Controller</p>
+              <h2 className="font-bold text-xs text-white tracking-wide truncate">APEX EXAM SITTING PLANNER</h2>
+              <p className="text-[10px] text-indigo-400 font-medium tracking-wider uppercase">Exam Planner Suite</p>
             </div>
           </div>
         </div>

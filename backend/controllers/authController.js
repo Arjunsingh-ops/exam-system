@@ -2,6 +2,45 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/db');
 
+const register = async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Full name, email, and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const [existing] = await pool.query('SELECT id FROM users WHERE LOWER(email) = ?', [cleanEmail]);
+    if (existing.length > 0) {
+      return res.status(409).json({ success: false, message: 'An account with this email address already exists.' });
+    }
+
+    const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    const [result] = await pool.query(
+      "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'planner')",
+      [name.trim(), cleanEmail, hashedPassword]
+    );
+
+    const token = jwt.sign(
+      { id: result.insertId, email: cleanEmail, role: 'planner', name: name.trim() },
+      process.env.JWT_SECRET || 'exam_secret_key',
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created successfully! Welcome to Apex Exam Sitting Planner.',
+      token,
+      user: { id: result.insertId, name: name.trim(), email: cleanEmail, role: 'planner' }
+    });
+  } catch (err) { next(err); }
+};
+
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -14,13 +53,13 @@ const login = async (req, res, next) => {
     const user = rows[0];
 
     // Generic error to prevent enumeration
-    if (!user || user.role !== 'admin') {
-      return res.status(401).json({ success: false, message: 'Invalid administrator credentials.' });
+    if (!user || (user.role !== 'admin' && user.role !== 'planner')) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      return res.status(401).json({ success: false, message: 'Invalid administrator credentials.' });
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
     const token = jwt.sign(
@@ -97,4 +136,4 @@ const changePassword = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { login, me, updateProfile, changePassword };
+module.exports = { register, login, me, updateProfile, changePassword };

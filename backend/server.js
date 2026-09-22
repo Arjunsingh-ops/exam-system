@@ -28,22 +28,24 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 // ─── Health ───────────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) =>
+const handleHealth = (req, res) =>
   res.json({
     success: true,
-    message: '🚀 University Exam Seating Management System API is running',
+    message: '🚀 Apex Exam Sitting Planner API is running',
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString()
-  })
-);
+  });
+
+app.get('/api/health', handleHealth);
+app.get('/health', handleHealth);
 
 // ─── Database Initialization Middleware ──────────────────────────────────────
 let isInitialized = false;
 let initPromise = null;
 
 app.use(async (req, res, next) => {
-  if (!isInitialized && req.path.startsWith('/api')) {
+  if (!isInitialized && req.path !== '/health' && req.path !== '/api/health') {
     if (!initPromise) {
       initPromise = initDatabase()
         .then(() => {
@@ -59,15 +61,32 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── Routes (Supported with and without /api prefix) ───────────────────────────
 const adminRoutes = require('./routes/adminRoutes');
-app.use('/api/auth',     authRoutes);
-app.use('/api/admin',    adminRoutes);
+
+// Auth routes
+app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
+// Admin routes
+app.use('/api/admin', adminRoutes);
+app.use('/admin-api', adminRoutes);
+
+// Core planner routes
 app.use('/api/students', studentRoutes);
-app.use('/api/rooms',    roomRoutes);
-app.use('/api/exams',    examRoutes);
+app.use('/students',     studentRoutes);
+
+app.use('/api/rooms', roomRoutes);
+app.use('/rooms',     roomRoutes);
+
+app.use('/api/exams', examRoutes);
+app.use('/exams',     examRoutes);
+
 app.use('/api/teachers', teacherRoutes);
-app.use('/api/seating',  seatingRoutes);
+app.use('/teachers',     teacherRoutes);
+
+app.use('/api/seating', seatingRoutes);
+app.use('/seating',     seatingRoutes);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) =>

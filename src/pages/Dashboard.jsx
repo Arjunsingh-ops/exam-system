@@ -66,13 +66,13 @@ export function Dashboard() {
       <div className="card-glass p-6 sm:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-indigo-500/20 bg-gradient-to-r from-surface via-surface to-indigo-950/30">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mb-2">
-            <Sparkles size={13} /> Examination Controller Console
+            <Sparkles size={13} /> Apex Exam Sitting Planner
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Welcome, {user.name || 'Exam Controller'}
+            Welcome, {user.name || 'Exam Planner'}
           </h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Manage university examination halls, configure anti-conflict seating arrangements, and produce official examination seat rosters.
+            Plan examination halls, configure anti-conflict seating arrangements, and produce official seating rosters.
           </p>
         </div>
 

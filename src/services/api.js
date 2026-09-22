@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+// Automatically normalize API base URL to prevent "Cannot POST /auth/login"
+let rawBase = import.meta.env.VITE_API_URL || '/api';
+rawBase = rawBase.trim().replace(/\/+$/, '');
+if (rawBase.startsWith('http') && !rawBase.endsWith('/api')) {
+  rawBase = `${rawBase}/api`;
+}
+const BASE = rawBase;
 
 const api = axios.create({
   baseURL: BASE,
@@ -22,7 +28,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if (window.location.pathname !== '/login') {
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
         window.location.href = '/login';
       }
     }
@@ -32,6 +38,7 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login:          (data) => api.post('/auth/login', data),
+  register:       (data) => api.post('/auth/register', data),
   me:             ()     => api.get('/auth/me'),
   updateProfile:  (data) => api.put('/auth/profile', data),
   changePassword: (data) => api.put('/auth/change-password', data),

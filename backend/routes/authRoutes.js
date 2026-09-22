@@ -1,8 +1,9 @@
 const router = require('express').Router();
-const { login, me, updateProfile, changePassword } = require('../controllers/authController');
+const { register, login, me, updateProfile, changePassword } = require('../controllers/authController');
 const { authenticate, authorizeAdmin } = require('../middleware/auth');
 
-// Public admin login
+// Public authentication
+router.post('/register', register);
 router.post('/login', login);
 
 // Authenticated session & account management

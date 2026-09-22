@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Login }        from './pages/Login';
+import { Register }     from './pages/Register';
 import { Dashboard }    from './pages/Dashboard';
 import { Students }     from './pages/Students';
 import { Rooms }        from './pages/Rooms';
@@ -13,8 +14,9 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/"      element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/"         element={<Navigate to="/login" replace />} />
+        <Route path="/login"    element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/admin" element={<AppLayout />}>
