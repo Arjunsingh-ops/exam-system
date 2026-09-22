@@ -1,10 +1,10 @@
--- Users table (Admin auth)
+-- Users table (Planner & Admin auth)
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   email VARCHAR(150) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
-  role ENUM('admin') NOT NULL DEFAULT 'admin',
+  role VARCHAR(50) NOT NULL DEFAULT 'planner',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

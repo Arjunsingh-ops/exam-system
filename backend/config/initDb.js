@@ -86,6 +86,11 @@ const initDatabase = async () => {
     await conn.query(schema);
     console.log('✅ Database schema initialized successfully');
 
+    // Auto-migrate role column to VARCHAR(50) so existing tables support both 'planner' and 'admin'
+    try {
+      await conn.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'planner'");
+    } catch (_) {}
+
     // Query existing admin accounts from database
     const [existingAdmins] = await conn.query(
       "SELECT id, email, password FROM users WHERE role = 'admin'"

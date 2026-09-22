@@ -49,8 +49,9 @@ export function Register() {
         navigate('/login');
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Registration failed. Please check your details.';
+      const msg = err.response?.data?.message || err.message || 'Registration failed. Please check your details.';
       toast.error(msg);
+      console.error('Registration failed:', err);
     } finally {
       setLoading(false);
     }
